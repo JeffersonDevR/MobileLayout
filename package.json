@@ -1,0 +1,27 @@
+{
+  "name": "mobile-layout-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MobileLayout Studio - Visual UI/UX Designer & LLM Code Bridge for Angular & Ionic",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build:bridge": "npm run build --workspace=@mobile-layout/bridge",
+    "dev:server": "npm run dev --workspace=@mobile-layout/server",
+    "dev:studio": "npm run dev --workspace=@mobile-layout/studio",
+    "start": "node packages/server/dist/index.js"
+  },
+  "keywords": [
+    "angular",
+    "ionic",
+    "visual-editor",
+    "llm",
+    "ui-designer",
+    "gemini",
+    "opencode"
+  ],
+  "author": "",
+  "license": "MIT"
+}

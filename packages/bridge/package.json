@@ -1,0 +1,14 @@
+{
+  "name": "@mobile-layout/bridge",
+  "version": "1.0.0",
+  "description": "Injected client inspector bridge for MobileLayout Studio",
+  "main": "dist/mobile-layout-bridge.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --outfile=dist/mobile-layout-bridge.js --format=iife",
+    "watch": "esbuild src/index.ts --bundle --outfile=dist/mobile-layout-bridge.js --format=iife --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.0"
+  }
+}

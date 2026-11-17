@@ -1,0 +1,10 @@
+.balance-card {
+  --background: #ffffff;
+  --border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  ion-card-title {
+    font-size: 28px;
+    font-weight: 700;
+  }
+}
