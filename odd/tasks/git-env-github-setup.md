@@ -42,9 +42,10 @@ V2 service integration. No global git author identity exists.
       - `c724556` feat: integrate OpenCode V2 REST service for code generation (6 files)
       - `71263a9` chore: add git and env configuration for remote delivery (4 files)
       Author: `JeffersonDevR <JeffersonDevR@users.noreply.github.com>` (user-selected).
-- [ ] T4 Remote added (`origin` -> https://github.com/JeffersonDevR/MobileLayout.git) and
-      credential helper configured for interactive GitHub login. Push is the remaining step;
-      the user will complete the interactive login when GitHub prompts.
+- [x] T4 Remote added (`origin` -> https://github.com/JeffersonDevR/MobileLayout.git) and
+      `git push -u origin main` completed: `* [new branch] main -> main`, upstream tracking set.
+      No interactive login prompt appeared because Git Credential Manager already held a valid
+      session; no credential was inspected or extracted by this workflow.
 
 ## Authorized Scope
 Local git and env files inside MobileLayout only. No remote operation until T4 inputs arrive.
@@ -85,7 +86,11 @@ Recorded 2026-11-17 from the repository root (PowerShell; `.cmd` variants used):
   rebuilt locally before any push); `git status --short` clean, 45 tracked files, and
   `git ls-files` contains no `.env`.
 
+- `git add odd/tasks/git-env-github-setup.md` + `git commit -m "docs: record git and env delivery state"`:
+  PASS (`80dcbcf`).
+- `git push -u origin main`: PASS — new remote branch `main` created and tracking configured.
+
 ## Next Step
-Run `git push -u origin main`. Git Credential Manager is configured for this repo only, so the
-first HTTPS push should open GitHub's interactive login. After the login, verify the push
-result and report the remote branch state.
+Closed. Repository is on GitHub at https://github.com/JeffersonDevR/MobileLayout with 4 local
+commits on `main`, clean worktree, and no secrets tracked. Any further delivery (PR, tags,
+release) is a separate user decision.
