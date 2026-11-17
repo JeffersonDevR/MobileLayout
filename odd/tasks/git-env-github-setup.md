@@ -36,11 +36,15 @@ V2 service integration. No global git author identity exists.
       `git check-ignore -v`.
 - [x] T2 Root `.env.example` documents all env vars with updated OpenCode defaults;
       `index.ts` defaults aligned; server build and tests still pass.
-- [ ] T3 Work-unit commit(s) with Conventional Commit message on a feature branch, merged to
-      `main`; BLOCKED on the user-provided git author name and email (no global git identity
-      is configured). Files are staged-ready but intentionally not committed.
-- [ ] T4 Remote added and push executed ONLY after the user supplies: repository URL,
-      authentication method, and git author name/email. Until then this task stays blocked.
+- [x] T3 Three work-unit commits on `feat/opencode-api-integration`, then `main` advanced to
+      the same tip:
+      - `ed1e911` chore: bootstrap MobileLayout Studio workspace (35 files)
+      - `c724556` feat: integrate OpenCode V2 REST service for code generation (6 files)
+      - `71263a9` chore: add git and env configuration for remote delivery (4 files)
+      Author: `JeffersonDevR <JeffersonDevR@users.noreply.github.com>` (user-selected).
+- [ ] T4 Remote added (`origin` -> https://github.com/JeffersonDevR/MobileLayout.git) and
+      credential helper configured for interactive GitHub login. Push is the remaining step;
+      the user will complete the interactive login when GitHub prompts.
 
 ## Authorized Scope
 Local git and env files inside MobileLayout only. No remote operation until T4 inputs arrive.
@@ -75,6 +79,13 @@ Recorded 2026-11-17 from the repository root (PowerShell; `.cmd` variants used):
 - `git config --local credential.helper manager`: PASS — Git Credential Manager is enabled for
   this repo only, so an HTTPS push will open GitHub's interactive login. No `origin` exists yet.
 
+- `git remote add origin https://github.com/JeffersonDevR/MobileLayout.git`: PASS.
+- `git config --local user.name/user.email`: PASS with the user-selected noreply identity.
+- Three work-unit commits rebuilt (an initial attempt staged only changed files and was
+  rebuilt locally before any push); `git status --short` clean, 45 tracked files, and
+  `git ls-files` contains no `.env`.
+
 ## Next Step
-Ask the user once for: (1) git author name and email, (2) GitHub remote URL, (3) push
-authentication method. STOP and wait; do not commit or push until all three arrive.
+Run `git push -u origin main`. Git Credential Manager is configured for this repo only, so the
+first HTTPS push should open GitHub's interactive login. After the login, verify the push
+result and report the remote branch state.
