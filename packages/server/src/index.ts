@@ -64,7 +64,14 @@ async function bootstrap() {
   });
 
   // API router
-  app.use('/api', createApiRouter(proxyManager, state));
+  const apiRouter = createApiRouter(proxyManager, state);
+  app.use('/api', apiRouter);
+
+  // Expose root /mcp endpoint for OpenCode and MCP clients
+  app.post('/mcp', (req, res, next) => {
+    req.url = '/mcp';
+    apiRouter(req, res, next);
+  });
 
   // Serve Studio UI static build if exists
   const studioDistPath = path.resolve(__dirname, '../../studio/dist');
