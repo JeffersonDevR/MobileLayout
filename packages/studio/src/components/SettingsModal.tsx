@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StudioConfig } from '../types';
 import { 
   X, 
@@ -37,6 +37,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [openCodeBaseUrl, setOpenCodeBaseUrl] = useState(config.openCodeBaseUrl || 'http://localhost:4096');
   const [openCodeApiKey, setOpenCodeApiKey] = useState(config.openCodeApiKey || '');
   const [openCodeModel, setOpenCodeModel] = useState(config.openCodeModel || '');
+
+  // Synchronize fields with config prop whenever modal opens or config updates
+  useEffect(() => {
+    if (isOpen) {
+      setTargetUrl(config.targetUrl || 'http://localhost:8100');
+      setProjectPath(config.projectPath || '');
+      setLlmProvider(config.llmProvider || 'gemini');
+      setGeminiApiKey(config.geminiApiKey || '');
+      setGeminiModel(config.geminiModel || 'gemini-2.5-flash');
+      setOpenCodeBaseUrl(config.openCodeBaseUrl || 'http://localhost:4096');
+      setOpenCodeApiKey(config.openCodeApiKey || '');
+      setOpenCodeModel(config.openCodeModel || '');
+    }
+  }, [isOpen, config]);
 
   if (!isOpen) return null;
 
@@ -167,17 +181,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Model Name</label>
-                  <select
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-slate-400 text-xs">Model Name</label>
+                    <span className="text-[10px] text-slate-500">Freeform or choose preset</span>
+                  </div>
+                  <input
+                    type="text"
+                    list="gemini-models-list"
                     value={geminiModel}
                     onChange={(e) => setGeminiModel(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 outline-none focus:border-blue-500"
-                  >
-                    <option value="gemini-2.5-flash">gemini-2.5-flash (Fast & Recommended)</option>
-                    <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                    <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                    <option value="gemini-2.5-pro">gemini-2.5-pro (High Reasoning)</option>
-                  </select>
+                    placeholder="e.g. gemini-2.5-flash or gemini-2.5-pro"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-slate-200 text-xs font-mono outline-none focus:border-blue-500"
+                  />
+                  <datalist id="gemini-models-list">
+                    <option value="gemini-2.5-flash" />
+                    <option value="gemini-2.5-pro" />
+                    <option value="gemini-2.0-flash" />
+                    <option value="gemini-2.0-flash-lite" />
+                    <option value="gemini-1.5-flash" />
+                    <option value="gemini-1.5-pro" />
+                  </datalist>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setGeminiModel(m)}
+                        className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                          geminiModel === m
+                            ? 'bg-blue-600/30 text-blue-300 border-blue-500/50'
+                            : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200'
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

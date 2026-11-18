@@ -5,6 +5,17 @@ export interface UIChangeItem {
   previousValue?: string;
 }
 
+export interface SelectedComponentItem {
+  id?: string;
+  tagName: string;
+  selector?: string;
+  matchedSnippet?: string;
+  htmlFilePath?: string;
+  lineNumber?: number;
+  warnings?: string[];
+  fixNote?: string;
+}
+
 export interface PromptContext {
   htmlFilePath: string;
   scssFilePath?: string;
@@ -14,6 +25,8 @@ export interface PromptContext {
   visualChanges: UIChangeItem[];
   userIntent?: string;
   elementDetails?: any;
+  selectedComponents?: SelectedComponentItem[];
+  batchFixPrompt?: string;
 }
 
 export class PromptBuilder {
@@ -38,27 +51,55 @@ Do not wrap the JSON in extra markdown fences or explanations outside the JSON o
   }
 
   public static buildUserPrompt(ctx: PromptContext): string {
-    const changesFormatted = ctx.visualChanges
+    const changesFormatted = (ctx.visualChanges || [])
       .map((c) => `- [${c.type.toUpperCase()}] ${c.name}: "${c.previousValue || '(none)'}" -> "${c.value}"`)
       .join('\n');
 
-    let prompt = `I made visual design changes to an element in my Angular/Ionic project.
+    let prompt = `I made visual design changes / requested fixes to element(s) in my Angular/Ionic project.
 
 TARGET FILES:
 - Template: ${ctx.htmlFilePath}
 ${ctx.scssFilePath ? `- Stylesheet: ${ctx.scssFilePath}` : ''}
+`;
 
-TARGET ELEMENT IN TEMPLATE:
+    if (ctx.selectedComponents && ctx.selectedComponents.length > 0) {
+      prompt += `\nSELECTED COMPONENTS TO FIX (${ctx.selectedComponents.length} items):\n`;
+      ctx.selectedComponents.forEach((comp, idx) => {
+        prompt += `\n--- Component #${idx + 1}: <${comp.tagName}> ---\n`;
+        prompt += `- Selector: ${comp.selector || comp.tagName}\n`;
+        if (comp.lineNumber) prompt += `- Template Line: ${comp.lineNumber}\n`;
+        if (comp.warnings && comp.warnings.length > 0) {
+          prompt += `- Identified Issues/Warnings:\n${comp.warnings.map((w) => `  * ${w}`).join('\n')}\n`;
+        }
+        if (comp.fixNote) {
+          prompt += `- Component Fix Requirement: "${comp.fixNote}"\n`;
+        }
+        if (comp.matchedSnippet) {
+          prompt += `- Template Snippet:\n\`\`\`html\n${comp.matchedSnippet}\n\`\`\`\n`;
+        }
+      });
+    } else if (ctx.matchedSnippet) {
+      prompt += `\nTARGET ELEMENT IN TEMPLATE:
 \`\`\`html
 ${ctx.matchedSnippet}
 \`\`\`
+`;
+    }
 
-VISUAL CHANGES APPLIED IN DESIGNER:
-${changesFormatted || '(None explicitly listed)'}
+    if (changesFormatted) {
+      prompt += `\nVISUAL CHANGES APPLIED IN DESIGNER:
+${changesFormatted}
+`;
+    }
 
-${ctx.userIntent ? `USER DESIGN INTENT / INSTRUCTION:\n"${ctx.userIntent}"\n` : ''}
+    const effectiveIntent = ctx.batchFixPrompt || ctx.userIntent;
+    if (effectiveIntent) {
+      prompt += `\nSPECIFIC USER FIX PROMPT / INSTRUCTIONS:
+"${effectiveIntent}"
+`;
+    }
 
-CURRENT FULL HTML TEMPLATE:
+    prompt += `\nCURRENT FULL HTML TEMPLATE:
 \`\`\`html
 ${ctx.fullHtmlContent}
 \`\`\`
@@ -72,7 +113,7 @@ ${ctx.fullScssContent || '/* Empty or new scss file */'}
 `;
     }
 
-    prompt += `\nPlease apply the requested visual adjustments and return the updated files in the specified JSON format.`;
+    prompt += `\nPlease apply all requested component fixes and return the updated files in the specified JSON format.`;
 
     return prompt;
   }
@@ -81,25 +122,53 @@ ${ctx.fullScssContent || '/* Empty or new scss file */'}
    * Generates a markdown prompt ready to copy-paste into Antigravity or any chat
    */
   public static buildClipboardPrompt(ctx: PromptContext): string {
-    const changesFormatted = ctx.visualChanges
+    const changesFormatted = (ctx.visualChanges || [])
       .map((c) => `- **${c.type}** \`${c.name}\`: \`${c.value}\``)
       .join('\n');
 
-    return `### UI/UX Code Update Request (from MobileLayout Studio)
+    let prompt = `### UI/UX Code Update Request (from MobileLayout Studio)
 
 **Target Component:** \`${ctx.htmlFilePath}\`
 ${ctx.scssFilePath ? `**Stylesheet:** \`${ctx.scssFilePath}\`\n` : ''}
+`;
 
-**Selected Element Snippet:**
+    if (ctx.selectedComponents && ctx.selectedComponents.length > 0) {
+      prompt += `\n**Selected Components to Fix (${ctx.selectedComponents.length}):**\n`;
+      ctx.selectedComponents.forEach((comp, idx) => {
+        prompt += `\n${idx + 1}. **\`<${comp.tagName}>\`** ${comp.selector ? `(\`${comp.selector}\`)` : ''}${comp.lineNumber ? ` - Line ${comp.lineNumber}` : ''}\n`;
+        if (comp.matchedSnippet) {
+          prompt += `\`\`\`html\n${comp.matchedSnippet}\n\`\`\`\n`;
+        }
+        if (comp.warnings && comp.warnings.length > 0) {
+          prompt += `*Issues / Warnings:* ${comp.warnings.join(', ')}\n`;
+        }
+        if (comp.fixNote) {
+          prompt += `*Fix Note:* ${comp.fixNote}\n`;
+        }
+      });
+    } else if (ctx.matchedSnippet) {
+      prompt += `\n**Selected Element Snippet:**
 \`\`\`html
 ${ctx.matchedSnippet}
 \`\`\`
+`;
+    }
 
-**Visual Adjustments Made in Studio:**
-${changesFormatted || 'Visual styling adjustments'}
+    if (changesFormatted) {
+      prompt += `\n**Visual Adjustments Made in Studio:**
+${changesFormatted}
+`;
+    }
 
-${ctx.userIntent ? `**Design Goal:**\n${ctx.userIntent}\n` : ''}
+    const effectiveIntent = ctx.batchFixPrompt || ctx.userIntent;
+    if (effectiveIntent) {
+      prompt += `\n**Fix Prompt & Instructions:**
+${effectiveIntent}
+`;
+    }
 
-Please update \`${ctx.htmlFilePath}\`${ctx.scssFilePath ? ` and \`${ctx.scssFilePath}\`` : ''} to apply these changes. Preserve all Angular bindings, use Ionic best practices (attributes like \`fill\`, \`expand\`, \`color\`, \`slot\`, and CSS variables like \`--border-radius\`), and output the updated code.`;
+    prompt += `\nPlease update \`${ctx.htmlFilePath}\`${ctx.scssFilePath ? ` and \`${ctx.scssFilePath}\`` : ''} to apply these changes. Preserve all Angular bindings, use Ionic best practices (attributes like \`fill\`, \`expand\`, \`color\`, \`slot\`, and CSS variables like \`--border-radius\`), and output the updated code.`;
+
+    return prompt;
   }
 }

@@ -4,8 +4,11 @@ import {
   MatchedSource, 
   UIChangeItem, 
   StudioConfig, 
-  DevicePreset 
+  DevicePreset,
+  ScreenAuditReport,
+  SelectedComponentItem
 } from './types';
+import { DEVICE_PRESETS } from './constants/devices';
 import { Navbar } from './components/Navbar';
 import { Canvas } from './components/Canvas';
 import { Inspector } from './components/Inspector';
@@ -13,13 +16,10 @@ import { ComponentPalette } from './components/ComponentPalette';
 import { StagingDrawer } from './components/StagingDrawer';
 import { DiffModal } from './components/DiffModal';
 import { SettingsModal } from './components/SettingsModal';
-
-const DEVICE_PRESETS: DevicePreset[] = [
-  { id: 'iphone-15', name: 'iPhone 15 Pro', width: 393, height: 852, isMobile: true, hasFrame: true },
-  { id: 'pixel-8', name: 'Pixel 8', width: 412, height: 915, isMobile: true, hasFrame: true },
-  { id: 'ipad-mini', name: 'iPad Mini', width: 744, height: 1133, isMobile: true, hasFrame: true },
-  { id: 'responsive', name: 'Responsive', width: 430, height: 800, isMobile: false, hasFrame: false }
-];
+import { LLMLogsModal } from './components/LLMLogsModal';
+import { UIUXAuditModal } from './components/UIUXAuditModal';
+import { ReactiveChangesDock } from './components/ReactiveChangesDock';
+import { ComponentFixModal } from './components/ComponentFixModal';
 
 export const App: React.FC = () => {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -29,11 +29,16 @@ export const App: React.FC = () => {
   const [isLandscape, setIsLandscape] = useState(false);
   const [zoom, setZoom] = useState(0.85);
   const [isInspectMode, setIsInspectMode] = useState(true);
+  const [showSafeArea, setShowSafeArea] = useState(true);
 
   // Inspector & selection state
   const [selectedElement, setSelectedElement] = useState<ElementDetails | null>(null);
   const [matchedSource, setMatchedSource] = useState<MatchedSource | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+
+  // Component Fix Hub & Multi-Select state
+  const [isFixModalOpen, setIsFixModalOpen] = useState(false);
+  const [selectedComponents, setSelectedComponents] = useState<SelectedComponentItem[]>([]);
 
   // Staged changes & LLM state
   const [stagedChanges, setStagedChanges] = useState<UIChangeItem[]>([]);
@@ -46,18 +51,40 @@ export const App: React.FC = () => {
   const [diffResult, setDiffResult] = useState<any>(null);
   const [isApplying, setIsApplying] = useState(false);
 
-  // Settings modal
+  // Settings modal & persistence
+  const LOCAL_STORAGE_SETTINGS_KEY = 'mobile_layout_studio_settings';
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [config, setConfig] = useState<StudioConfig>({
-    projectPath: '',
-    projectExists: false,
-    targetUrl: 'http://localhost:8100',
-    llmProvider: 'gemini',
-    geminiApiKey: '',
-    geminiModel: 'gemini-2.5-flash',
-    openCodeBaseUrl: 'http://localhost:11434/v1',
-    openCodeApiKey: 'dummy-key',
-    openCodeModel: 'deepseek-coder'
+  const [isAccommodateSafeArea, setIsAccommodateSafeArea] = useState(false);
+
+  // LLM Logs state
+  const [isLLMLogsOpen, setIsLLMLogsOpen] = useState(false);
+  const [llmLogsCount, setLlmLogsCount] = useState(0);
+
+  // UI/UX Audit state
+  const [isUIUXAuditOpen, setIsUIUXAuditOpen] = useState(false);
+  const [auditReport, setAuditReport] = useState<ScreenAuditReport | null>(null);
+  const [isRunningAudit, setIsRunningAudit] = useState(false);
+
+  const [config, setConfig] = useState<StudioConfig>(() => {
+    const defaults: StudioConfig = {
+      projectPath: '',
+      projectExists: false,
+      targetUrl: 'http://localhost:8100',
+      llmProvider: 'gemini',
+      geminiApiKey: '',
+      geminiModel: 'gemini-2.5-flash',
+      openCodeBaseUrl: 'http://localhost:11434/v1',
+      openCodeApiKey: 'dummy-key',
+      openCodeModel: 'deepseek-coder'
+    };
+
+    try {
+      const saved = localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY);
+      if (saved) {
+        return { ...defaults, ...JSON.parse(saved) };
+      }
+    } catch (e) {}
+    return defaults;
   });
 
   // Notification toast
@@ -68,16 +95,25 @@ export const App: React.FC = () => {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Fetch initial config & status from server
+  // Fetch initial config & status from server and merge with localStorage
   useEffect(() => {
     fetch('/api/status')
       .then((res) => res.json())
       .then((data) => {
         if (data.config) {
-          setConfig((prev) => ({
-            ...prev,
-            ...data.config
-          }));
+          setConfig((prev) => {
+            const merged = {
+              ...prev,
+              ...data.config,
+              // Keep non-empty localStorage keys if server returned empty
+              geminiApiKey: data.config.geminiApiKey || prev.geminiApiKey,
+              openCodeApiKey: data.config.openCodeApiKey || prev.openCodeApiKey
+            };
+            try {
+              localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          });
         }
       })
       .catch((err) => console.log('Could not connect to Studio API server:', err.message));
@@ -102,6 +138,11 @@ export const App: React.FC = () => {
           setSelectedElement(elData);
           // Automatically attempt to scan project to match template
           scanElementInProject(elData);
+          break;
+
+        case 'MOBILE_LAYOUT_ADD_TO_FIX_LIST':
+          const compData = data.payload as ElementDetails;
+          handleAddElementToFixList(compData);
           break;
 
         case 'MOBILE_LAYOUT_ELEMENT_REMOVED_FROM_CANVAS':
@@ -144,6 +185,95 @@ export const App: React.FC = () => {
             ];
           });
           break;
+
+        case 'MOBILE_LAYOUT_ELEMENT_DESELECTED':
+          setSelectedElement(null);
+          setMatchedSource(null);
+          break;
+
+        case 'MOBILE_LAYOUT_ELEMENT_RESIZED':
+          const { width, height, tagName, selector } = data.payload || {};
+          const changes: UIChangeItem[] = [];
+          if (width) {
+            changes.push({
+              type: 'style',
+              name: `width: <${tagName || 'element'}>`,
+              value: width,
+              selector
+            });
+          }
+          if (height) {
+            changes.push({
+              type: 'style',
+              name: `height: <${tagName || 'element'}>`,
+              value: height,
+              selector
+            });
+          }
+          setStagedChanges((prev) => {
+            let updated = [...prev];
+            for (const ch of changes) {
+              updated = updated.filter((c) => !(c.type === ch.type && c.name === ch.name));
+              updated.push(ch);
+            }
+            return updated;
+          });
+          if (selectedElement) {
+            setSelectedElement((prev) => prev ? {
+              ...prev,
+              boxModel: {
+                ...prev.boxModel,
+                width: width ? parseInt(width) || prev.boxModel.width : prev.boxModel.width,
+                height: height ? parseInt(height) || prev.boxModel.height : prev.boxModel.height
+              },
+              computedStyles: {
+                ...prev.computedStyles,
+                width: width || prev.computedStyles.width,
+                height: height || prev.computedStyles.height
+              }
+            } : null);
+          }
+          showToast(`Resized <${tagName || 'element'}> to ${width || ''} ${height ? '× ' + height : ''}`, 'info');
+          break;
+
+        case 'MOBILE_LAYOUT_COMPONENT_DROPPED':
+          const { snippet: dropSnippet, name: dropName, previewId: dropPId, position: dropPos } = data.payload || {};
+          if (dropSnippet && dropPId) {
+            setStagedChanges((prev) => [
+              ...prev,
+              {
+                id: dropPId,
+                type: 'insert',
+                name: dropName || 'Component',
+                value: dropSnippet,
+                previewId: dropPId
+              }
+            ]);
+            setIsStagingOpen(true);
+            showToast(`Dropped and inserted ${dropName || 'Component'} on canvas!`, 'success');
+          }
+          break;
+
+        case 'MOBILE_LAYOUT_AUDIT_RESULT':
+          setAuditReport(data.payload);
+          setIsRunningAudit(false);
+          break;
+
+        case 'MOBILE_LAYOUT_AUDIT_FIX_APPLIED':
+          const { selector: fixSel, prop: fixProp, value: fixVal } = data.payload || {};
+          if (fixProp && fixVal) {
+            setStagedChanges((prev) => [
+              ...prev,
+              {
+                type: 'style',
+                name: `${fixProp} (${fixSel || 'element'})`,
+                value: fixVal,
+                selector: fixSel
+              }
+            ]);
+            showToast(`Applied live fix: ${fixProp} = ${fixVal}`, 'success');
+          }
+          break;
       }
     };
 
@@ -155,6 +285,47 @@ export const App: React.FC = () => {
     if (iframeRef.current && iframeRef.current.contentWindow) {
       iframeRef.current.contentWindow.postMessage({ type, payload }, '*');
     }
+  };
+
+  // Handle element deselect
+  const handleDeselectElement = () => {
+    postToIframe('MOBILE_LAYOUT_CLEAR_SELECTION', {});
+    setSelectedElement(null);
+    setMatchedSource(null);
+  };
+
+  // Keyboard shortcut: Escape to deselect
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && selectedElement) {
+        handleDeselectElement();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedElement]);
+
+  // Sync device safe area insets & accommodate view to target app iframe
+  useEffect(() => {
+    if (activeDevice.safeArea) {
+      postToIframe('MOBILE_LAYOUT_SET_SAFE_AREA', activeDevice.safeArea);
+      postToIframe('MOBILE_LAYOUT_SET_ACCOMMODATE_SAFE_AREA', {
+        enabled: isAccommodateSafeArea,
+        top: activeDevice.safeArea.top,
+        bottom: activeDevice.safeArea.bottom
+      });
+    }
+  }, [activeDevice, isAccommodateSafeArea]);
+
+  const handleToggleAccommodateSafeArea = () => {
+    const next = !isAccommodateSafeArea;
+    setIsAccommodateSafeArea(next);
+    postToIframe('MOBILE_LAYOUT_SET_ACCOMMODATE_SAFE_AREA', {
+      enabled: next,
+      top: activeDevice.safeArea?.top ?? 47,
+      bottom: activeDevice.safeArea?.bottom ?? 34
+    });
+    showToast(`Accommodate view to safe area: ${next ? 'ON' : 'OFF'}`, 'info');
   };
 
   const handleToggleInspect = () => {
@@ -397,8 +568,341 @@ export const App: React.FC = () => {
       showToast(err.message, 'error');
     } finally {
       setIsGenerating(false);
+      fetchLLMLogsCount();
     }
   };
+
+  const fetchLLMLogsCount = async () => {
+    try {
+      const res = await fetch('/api/llm-logs');
+      const data = await res.json();
+      if (data.logs) {
+        setLlmLogsCount(data.logs.length);
+      }
+    } catch (err) {}
+  };
+
+  useEffect(() => {
+    fetchLLMLogsCount();
+  }, []);
+
+  const handleRunAudit = () => {
+    setIsRunningAudit(true);
+    postToIframe('MOBILE_LAYOUT_RUN_AUDIT', {});
+  };
+
+  const handleApplyAuditFix = (selector: string, prop: string, value: string) => {
+    postToIframe('MOBILE_LAYOUT_APPLY_AUDIT_FIX', { selector, prop, value });
+  };
+
+  const handleSelectBySelector = (selector: string) => {
+    postToIframe('MOBILE_LAYOUT_SELECT_BY_SELECTOR', { selector });
+  };
+
+  // Multi-Component Fix Hub helpers
+  const handleAddElementToFixList = async (el: ElementDetails, matchedSrc?: MatchedSource | null) => {
+    const existing = selectedComponents.find((c) => c.selectorPath === el.selectorPath);
+    if (existing) {
+      showToast(`<${el.tagName}> is already in the Fix Hub!`, 'info');
+      setIsFixModalOpen(true);
+      return;
+    }
+
+    let source = matchedSrc || (el.selectorPath === selectedElement?.selectorPath ? matchedSource : null);
+
+    if (!source && config.projectPath) {
+      try {
+        const res = await fetch('/api/scan-element', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectPath: config.projectPath,
+            element: {
+              tagName: el.tagName,
+              id: el.id,
+              classList: el.classList,
+              attributes: el.attributes,
+              textContent: el.textContent,
+              selectorPath: el.selectorPath
+            }
+          })
+        });
+        const scanData = await res.json();
+        if (scanData.found && scanData.match) {
+          source = scanData.match;
+        }
+      } catch (err) {}
+    }
+
+    const newItem: SelectedComponentItem = {
+      id: 'fix-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+      tagName: el.tagName,
+      selectorPath: el.selectorPath,
+      elementId: el.id,
+      classList: el.classList || [],
+      textContent: el.textContent,
+      matchedSource: source,
+      layoutWarnings: el.layoutWarnings || [],
+      rect: el.rect
+    };
+
+    setSelectedComponents((prev) => [...prev, newItem]);
+    showToast(`Added <${el.tagName}> to Component Fix Hub!`, 'success');
+  };
+
+  const handleToggleSelectForFix = () => {
+    if (!selectedElement) return;
+    const exists = selectedComponents.find((c) => c.selectorPath === selectedElement.selectorPath);
+    if (exists) {
+      setSelectedComponents((prev) => prev.filter((c) => c.id !== exists.id));
+      showToast(`Removed <${selectedElement.tagName}> from Fix Hub.`, 'info');
+    } else {
+      handleAddElementToFixList(selectedElement, matchedSource);
+    }
+  };
+
+  const handleRemoveSelectedComponent = (id: string) => {
+    setSelectedComponents((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleClearSelectedComponents = () => {
+    setSelectedComponents([]);
+    showToast('Cleared all components from Fix Hub.', 'info');
+  };
+
+  const handleUpdateComponentNote = (id: string, note: string) => {
+    setSelectedComponents((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, fixNote: note } : c))
+    );
+  };
+
+  const handleAddAuditElementsToFixList = () => {
+    if (!auditReport || auditReport.issues.length === 0) return;
+    const newItems: SelectedComponentItem[] = [];
+    auditReport.issues.forEach((issue) => {
+      if (!selectedComponents.some((c) => c.selectorPath === issue.selector)) {
+        newItems.push({
+          id: 'audit-fix-' + issue.id + '-' + Math.random().toString(36).substr(2, 4),
+          tagName: issue.tagName,
+          selectorPath: issue.selector,
+          classList: [],
+          layoutWarnings: [
+            {
+              id: issue.id,
+              type: issue.category as any,
+              level: issue.level,
+              title: issue.title,
+              message: issue.message,
+              recommendation: issue.message
+            }
+          ],
+          fixNote: issue.message,
+          matchedSource: matchedSource
+        });
+      }
+    });
+
+    if (newItems.length > 0) {
+      setSelectedComponents((prev) => [...prev, ...newItems]);
+      showToast(`Added ${newItems.length} audit issue element(s) to Fix Hub!`, 'success');
+    } else {
+      showToast('All audit elements are already in the Fix Hub.', 'info');
+    }
+  };
+
+  const handleHighlightComponent = (selector: string) => {
+    handleSelectBySelector(selector);
+  };
+
+  const handleGenerateBatchFix = async (prompt: string, components: SelectedComponentItem[]) => {
+    if (components.length === 0) {
+      showToast('Please select at least one component first.', 'error');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const primaryComponent = components.find((c) => c.matchedSource) || components[0];
+      const htmlFile = primaryComponent.matchedSource?.htmlFilePath || matchedSource?.htmlFilePath || '';
+      const scssFile = primaryComponent.matchedSource?.scssFilePath || matchedSource?.scssFilePath;
+      const fullHtml = primaryComponent.matchedSource?.fullHtmlContent || matchedSource?.fullHtmlContent || '';
+      const fullScss = primaryComponent.matchedSource?.fullScssContent || matchedSource?.fullScssContent;
+
+      const res = await fetch('/api/generate-patch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: config.llmProvider,
+          geminiApiKey: config.geminiApiKey,
+          geminiModel: config.geminiModel,
+          openCodeBaseUrl: config.openCodeBaseUrl,
+          openCodeApiKey: config.openCodeApiKey,
+          openCodeModel: config.openCodeModel,
+          context: {
+            htmlFilePath: htmlFile,
+            scssFilePath: scssFile,
+            matchedSnippet: primaryComponent.matchedSource?.matchedSnippet || '',
+            fullHtmlContent: fullHtml,
+            fullScssContent: fullScss,
+            visualChanges: stagedChanges,
+            selectedComponents: components.map((c) => ({
+              id: c.id,
+              tagName: c.tagName,
+              selector: c.selectorPath,
+              matchedSnippet: c.matchedSource?.matchedSnippet,
+              htmlFilePath: c.matchedSource?.htmlFilePath,
+              lineNumber: c.matchedSource?.lineNumber,
+              warnings: c.layoutWarnings?.map((w) => w.title),
+              fixNote: c.fixNote
+            })),
+            batchFixPrompt: prompt,
+            userIntent: prompt
+          }
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to generate code changes.');
+      }
+
+      setDiffResult({
+        ...data,
+        htmlFilePath: htmlFile,
+        scssFilePath: scssFile
+      });
+      setIsFixModalOpen(false);
+      setIsDiffOpen(true);
+      showToast(`Generated fixes for ${components.length} component(s)! Review diff now.`, 'success');
+    } catch (err: any) {
+      showToast('Generation failed: ' + err.message, 'error');
+    } finally {
+      setIsGenerating(false);
+      fetchLLMLogsCount();
+    }
+  };
+
+  const handleCopyBatchPrompt = async (prompt: string, components: SelectedComponentItem[]) => {
+    if (components.length === 0) {
+      showToast('No components selected to copy.', 'error');
+      return;
+    }
+
+    try {
+      const primaryComponent = components.find((c) => c.matchedSource) || components[0];
+      const res = await fetch('/api/generate-clipboard-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          htmlFilePath: primaryComponent.matchedSource?.htmlFilePath || matchedSource?.htmlFilePath || 'template.html',
+          scssFilePath: primaryComponent.matchedSource?.scssFilePath || matchedSource?.scssFilePath,
+          matchedSnippet: primaryComponent.matchedSource?.matchedSnippet || '',
+          fullHtmlContent: primaryComponent.matchedSource?.fullHtmlContent || '',
+          fullScssContent: primaryComponent.matchedSource?.fullScssContent || '',
+          visualChanges: stagedChanges,
+          selectedComponents: components.map((c) => ({
+            id: c.id,
+            tagName: c.tagName,
+            selector: c.selectorPath,
+            matchedSnippet: c.matchedSource?.matchedSnippet,
+            htmlFilePath: c.matchedSource?.htmlFilePath,
+            lineNumber: c.matchedSource?.lineNumber,
+            warnings: c.layoutWarnings?.map((w) => w.title),
+            fixNote: c.fixNote
+          })),
+          batchFixPrompt: prompt,
+          userIntent: prompt
+        })
+      });
+
+      const data = await res.json();
+      if (data.prompt) {
+        navigator.clipboard.writeText(data.prompt);
+        showToast('Batch prompt copied to clipboard! Ready to paste into Antigravity.', 'success');
+      }
+    } catch (err: any) {
+      showToast('Failed to generate prompt: ' + err.message, 'error');
+    }
+  };
+
+  // Synchronize live canvas state to backend for OpenCode & MCP
+  useEffect(() => {
+    fetch('/api/canvas-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        selectedElement,
+        auditReport,
+        activeDevice,
+        stagedChanges,
+        safeArea: activeDevice.safeArea
+      })
+    }).catch(() => {});
+  }, [selectedElement, auditReport, activeDevice, stagedChanges]);
+
+  // Poll for commands issued by OpenCode via MCP
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/mcp-command/pending');
+        const data = await res.json();
+        if (data.commands && data.commands.length > 0) {
+          for (const cmd of data.commands) {
+            try {
+              if (cmd.type === 'apply_style') {
+                handleLiveUpdate(cmd.payload.styles || {}, {}, {
+                  type: 'style',
+                  name: `OpenCode: ${Object.keys(cmd.payload.styles || {}).join(', ')}`,
+                  value: Object.values(cmd.payload.styles || {}).join(', '),
+                  selector: cmd.payload.selector
+                });
+                showToast(`OpenCode applied styles: ${Object.keys(cmd.payload.styles || {}).join(', ')}`, 'info');
+              } else if (cmd.type === 'apply_attribute') {
+                handleLiveUpdate({}, cmd.payload.attributes || {}, {
+                  type: 'attribute',
+                  name: `OpenCode: ${Object.keys(cmd.payload.attributes || {}).join(', ')}`,
+                  value: Object.values(cmd.payload.attributes || {}).join(', '),
+                  selector: cmd.payload.selector
+                });
+                showToast(`OpenCode applied attributes`, 'info');
+              } else if (cmd.type === 'update_text') {
+                handleUpdateText(cmd.payload.text);
+                showToast(`OpenCode updated text: "${cmd.payload.text}"`, 'info');
+              } else if (cmd.type === 'insert_component') {
+                handleInsertSnippet(cmd.payload.snippet, cmd.payload.name || 'Component');
+                showToast(`OpenCode inserted component: ${cmd.payload.name || 'Component'}`, 'info');
+              } else if (cmd.type === 'set_device') {
+                const found = DEVICE_PRESETS.find((d) => d.id === cmd.payload.deviceId);
+                if (found) {
+                  setActiveDevice(found);
+                  if (cmd.payload.isLandscape !== undefined) setIsLandscape(cmd.payload.isLandscape);
+                  showToast(`OpenCode switched device to ${found.name}`, 'info');
+                }
+              } else if (cmd.type === 'run_audit') {
+                handleRunAudit();
+              } else if (cmd.type === 'revert_changes') {
+                handleClearAllChanges();
+              }
+
+              fetch('/api/mcp-command/result', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: cmd.id, result: { success: true } })
+              }).catch(() => {});
+            } catch (err: any) {
+              fetch('/api/mcp-command/result', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: cmd.id, error: err.message })
+              }).catch(() => {});
+            }
+          }
+        }
+      } catch (e) {}
+    }, 1200);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Apply code changes to files on disk
   const handleApplyChanges = async () => {
@@ -440,9 +944,15 @@ export const App: React.FC = () => {
     }
   };
 
-  // Save settings
+  // Save settings with dual persistence (localStorage + disk)
   const handleSaveConfig = async (updated: Partial<StudioConfig>) => {
     try {
+      const merged = { ...config, ...updated };
+      setConfig(merged);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(merged));
+      } catch (e) {}
+
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -450,8 +960,12 @@ export const App: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        setConfig((prev) => ({ ...prev, ...updated }));
-        showToast('Configuration updated!', 'success');
+        const full = { ...merged, ...(data.config || {}) };
+        setConfig(full);
+        try {
+          localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(full));
+        } catch (e) {}
+        showToast('Settings saved to disk and browser!', 'success');
         if (selectedElement && updated.projectPath) {
           scanElementInProject(selectedElement);
         }
@@ -482,6 +996,20 @@ export const App: React.FC = () => {
         onOpenSettings={() => setIsSettingsOpen(true)}
         targetUrl={config.targetUrl}
         onRefreshIframe={handleRefreshIframe}
+        showSafeArea={showSafeArea}
+        onToggleSafeArea={() => setShowSafeArea(!showSafeArea)}
+        isAccommodateSafeArea={isAccommodateSafeArea}
+        onToggleAccommodateSafeArea={handleToggleAccommodateSafeArea}
+        onOpenLLMLogs={() => setIsLLMLogsOpen(true)}
+        llmLogsCount={llmLogsCount}
+        onOpenUIUXAudit={() => {
+          setIsUIUXAuditOpen(true);
+          if (!auditReport) handleRunAudit();
+        }}
+        auditIssuesCount={auditReport?.issues.length || 0}
+        auditScore={auditReport?.score}
+        onOpenComponentFixer={() => setIsFixModalOpen(true)}
+        selectedComponentsCount={selectedComponents.length}
       />
 
       {/* Main Workspace Layout */}
@@ -499,7 +1027,24 @@ export const App: React.FC = () => {
           iframeRef={iframeRef}
           onIframeLoaded={() => {
             console.log('[Studio] Target iframe loaded.');
+            if (activeDevice.safeArea) {
+              postToIframe('MOBILE_LAYOUT_SET_SAFE_AREA', activeDevice.safeArea);
+              postToIframe('MOBILE_LAYOUT_SET_ACCOMMODATE_SAFE_AREA', {
+                enabled: isAccommodateSafeArea,
+                top: activeDevice.safeArea.top,
+                bottom: activeDevice.safeArea.bottom
+              });
+            }
+            setTimeout(() => {
+              postToIframe('MOBILE_LAYOUT_RUN_AUDIT', {});
+            }, 800);
           }}
+          onDeselect={handleDeselectElement}
+          showSafeArea={showSafeArea}
+          onToggleSafeArea={() => setShowSafeArea(!showSafeArea)}
+          isAccommodateSafeArea={isAccommodateSafeArea}
+          onToggleAccommodateSafeArea={handleToggleAccommodateSafeArea}
+          onDropSnippet={handleInsertSnippet}
         />
 
         {/* Right: Visual Property Inspector */}
@@ -514,6 +1059,24 @@ export const App: React.FC = () => {
           onDeleteElement={handleDeleteCurrentElement}
           onMoveElement={handleMoveElement}
           onUpdateText={handleUpdateText}
+          onDeselect={handleDeselectElement}
+          onToggleSelectForFix={handleToggleSelectForFix}
+          isAddedToFixList={Boolean(
+            selectedElement &&
+            selectedComponents.some((c) => c.selectorPath === selectedElement.selectorPath)
+          )}
+        />
+
+        {/* Floating Reactive Changes Dock */}
+        <ReactiveChangesDock
+          stagedChanges={stagedChanges}
+          matchedSource={matchedSource}
+          onRemoveChange={handleRemoveChange}
+          onClearAllChanges={handleClearAllChanges}
+          onOpenStaging={() => setIsStagingOpen(true)}
+          onGenerateWithLLM={handleGenerateWithLLM}
+          onCopyPrompt={handleCopyPrompt}
+          isGenerating={isGenerating}
         />
       </div>
 
@@ -554,6 +1117,47 @@ export const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         config={config}
         onSaveConfig={handleSaveConfig}
+      />
+
+      {/* LLM Activity Logs Modal */}
+      <LLMLogsModal
+        isOpen={isLLMLogsOpen}
+        onClose={() => setIsLLMLogsOpen(false)}
+      />
+
+      {/* Screen-wide Mobile UI/UX Audit Modal */}
+      <UIUXAuditModal
+        isOpen={isUIUXAuditOpen}
+        onClose={() => setIsUIUXAuditOpen(false)}
+        report={auditReport}
+        onRunAudit={handleRunAudit}
+        onApplyFix={handleApplyAuditFix}
+        onSelectElement={handleSelectBySelector}
+        isRunningAudit={isRunningAudit}
+      />
+
+      {/* Multi-Component Fix Hub Modal */}
+      <ComponentFixModal
+        isOpen={isFixModalOpen}
+        onClose={() => setIsFixModalOpen(false)}
+        selectedComponents={selectedComponents}
+        onRemoveComponent={handleRemoveSelectedComponent}
+        onClearComponents={handleClearSelectedComponents}
+        onUpdateComponentNote={handleUpdateComponentNote}
+        onAddCurrentElement={() => selectedElement && handleAddElementToFixList(selectedElement, matchedSource)}
+        onAddAuditElements={handleAddAuditElementsToFixList}
+        onHighlightComponent={handleHighlightComponent}
+        currentInspectedElement={selectedElement}
+        currentMatchedSource={matchedSource}
+        auditReport={auditReport}
+        llmProvider={config.llmProvider}
+        isGenerating={isGenerating}
+        onGenerateBatchFix={handleGenerateBatchFix}
+        onCopyBatchPrompt={handleCopyBatchPrompt}
+        onOpenSettings={() => {
+          setIsFixModalOpen(false);
+          setIsSettingsOpen(true);
+        }}
       />
 
       {/* Toast Alert */}

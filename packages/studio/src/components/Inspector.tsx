@@ -14,7 +14,14 @@ import {
   Check, 
   X,
   Search,
-  Sliders
+  Sliders,
+  Shield,
+  Maximize2,
+  Minimize2,
+  AlertTriangle,
+  Zap,
+  CheckCircle2,
+  Wrench
 } from 'lucide-react';
 
 interface InspectorProps {
@@ -28,6 +35,9 @@ interface InspectorProps {
   onDeleteElement?: () => void;
   onMoveElement?: (direction: 'up' | 'down') => void;
   onUpdateText?: (text: string) => void;
+  onDeselect?: () => void;
+  onToggleSelectForFix?: () => void;
+  isAddedToFixList?: boolean;
 }
 
 const IONIC_COLORS = [
@@ -52,9 +62,13 @@ export const Inspector: React.FC<InspectorProps> = ({
   onInsertSnippet,
   onDeleteElement,
   onMoveElement,
-  onUpdateText
+  onUpdateText,
+  onDeselect,
+  onToggleSelectForFix,
+  isAddedToFixList
 }) => {
   const [activeTab, setActiveTab] = useState<'ionic' | 'box' | 'layout' | 'typography'>('ionic');
+  const [showMinMax, setShowMinMax] = useState(false);
 
   if (!element) {
     return (
@@ -105,6 +119,17 @@ export const Inspector: React.FC<InspectorProps> = ({
           </span>
 
           <div className="flex items-center space-x-1.5">
+            {onDeselect && (
+              <button
+                onClick={onDeselect}
+                className="text-[11px] px-2 py-0.5 rounded border font-medium bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700 flex items-center space-x-1 transition-all"
+                title="Deselect active element (Esc)"
+              >
+                <X className="w-3 h-3 text-slate-400" />
+                <span>Deselect</span>
+              </button>
+            )}
+
             {onDeleteElement && (
               <button
                 onClick={onDeleteElement}
@@ -156,6 +181,30 @@ export const Inspector: React.FC<InspectorProps> = ({
           )}
         </div>
 
+        {/* Add to Component Fix Hub */}
+        {onToggleSelectForFix && (
+          <button
+            onClick={onToggleSelectForFix}
+            className={`w-full mt-2 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center space-x-1.5 transition-all ${
+              isAddedToFixList
+                ? 'bg-violet-600/30 text-violet-300 border border-violet-500/50 hover:bg-violet-600/40 shadow-sm'
+                : 'bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white shadow-md shadow-violet-600/20'
+            }`}
+          >
+            {isAddedToFixList ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-violet-400" />
+                <span>Selected in Fix Hub</span>
+              </>
+            ) : (
+              <>
+                <Wrench className="w-3.5 h-3.5 text-white" />
+                <span>+ Add to Component Fix Hub</span>
+              </>
+            )}
+          </button>
+        )}
+
         {/* Move & Position Controls */}
         <div className="mt-2.5 pt-2 border-t border-slate-800 flex items-center justify-between">
           <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Layout Order</span>
@@ -192,6 +241,61 @@ export const Inspector: React.FC<InspectorProps> = ({
           />
         </div>
       </div>
+
+      {/* Mobile Layout Pattern Warnings / Best Practice Linter */}
+      {element.layoutWarnings && element.layoutWarnings.length > 0 ? (
+        <div className="p-3 border-b border-amber-500/20 bg-amber-500/5 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-1.5 text-amber-400 font-semibold text-xs">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Layout Warnings ({element.layoutWarnings.length})</span>
+            </div>
+            <span className="text-[10px] text-amber-400/80 bg-amber-400/10 px-1.5 py-0.5 rounded border border-amber-400/20">
+              Pattern Linter
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            {element.layoutWarnings.map((warning) => (
+              <div
+                key={warning.id}
+                className={`p-2 rounded-lg border text-[11px] space-y-1 ${
+                  warning.level === 'error'
+                    ? 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                    : warning.level === 'warning'
+                    ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                    : 'bg-blue-950/40 border-blue-500/40 text-blue-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-1">
+                  <span className="font-semibold text-[11px] leading-tight">{warning.title}</span>
+                  <span className="uppercase text-[9px] px-1 py-0.2 rounded font-mono font-bold tracking-wider shrink-0 opacity-80">
+                    {warning.level}
+                  </span>
+                </div>
+                <p className="text-[10px] opacity-90 leading-relaxed">{warning.message}</p>
+                {warning.quickFix && (
+                  <button
+                    onClick={() => handleStyleChange(warning.quickFix!.prop, warning.quickFix!.value)}
+                    className="mt-1 w-full flex items-center justify-center space-x-1 px-2 py-1 rounded bg-slate-900 hover:bg-slate-800 text-[10px] font-semibold text-emerald-300 border border-emerald-500/40 hover:border-emerald-400 transition-all shadow-sm"
+                  >
+                    <Zap className="w-3 h-3 text-emerald-400" />
+                    <span>Quick Fix: {warning.quickFix.label}</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="px-3 py-1.5 border-b border-slate-800 bg-slate-900/40 flex items-center justify-between text-[11px] text-slate-400">
+          <div className="flex items-center space-x-1.5 text-emerald-400">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-medium text-slate-300">Layout Pattern: Valid</span>
+          </div>
+          <span className="text-[9px] text-slate-500">Apple HIG & Material OK</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-slate-800 bg-slate-900/80 text-xs">
@@ -436,10 +540,303 @@ export const Inspector: React.FC<InspectorProps> = ({
           </div>
         )}
 
-        {/* TAB 2: BOX MODEL & SPACING */}
+        {/* TAB 2: BOX MODEL, RESIZE & SECURE AREA */}
         {activeTab === 'box' && (
           <div className="space-y-4">
+            {/* Dimensions & Resizing Section */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider flex items-center space-x-1">
+                  <Maximize2 className="w-3 h-3 text-blue-400" />
+                  <span>Size & Dimensions</span>
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  {element.boxModel.width} × {element.boxModel.height} px
+                </span>
+              </div>
+
+              {/* Width Control */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] text-slate-300 font-medium">Width</label>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => {
+                        const newW = Math.max(20, element.boxModel.width - 10);
+                        handleStyleChange('width', `${newW}px`);
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-mono border border-slate-700"
+                      title="Decrease width by 10px"
+                    >
+                      -10px
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newW = element.boxModel.width + 10;
+                        handleStyleChange('width', `${newW}px`);
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-mono border border-slate-700"
+                      title="Increase width by 10px"
+                    >
+                      +10px
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <input
+                    type="text"
+                    defaultValue={element.computedStyles.width || `${element.boxModel.width}px`}
+                    key={`w-${element.id || element.tagName}-${element.boxModel.width}`}
+                    onBlur={(e) => handleStyleChange('width', e.target.value)}
+                    placeholder="e.g. 100%, 300px, auto"
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono text-xs outline-none focus:border-blue-500"
+                  />
+                  <div className="flex space-x-1">
+                    {['auto', '100%', '50%'].map((wPreset) => (
+                      <button
+                        key={wPreset}
+                        onClick={() => handleStyleChange('width', wPreset)}
+                        className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-slate-200 border border-slate-700"
+                      >
+                        {wPreset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Height Control */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] text-slate-300 font-medium">Height</label>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => {
+                        const newH = Math.max(16, element.boxModel.height - 10);
+                        handleStyleChange('height', `${newH}px`);
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-mono border border-slate-700"
+                      title="Decrease height by 10px"
+                    >
+                      -10px
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newH = element.boxModel.height + 10;
+                        handleStyleChange('height', `${newH}px`);
+                      }}
+                      className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-mono border border-slate-700"
+                      title="Increase height by 10px"
+                    >
+                      +10px
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <input
+                    type="text"
+                    defaultValue={element.computedStyles.height || `${element.boxModel.height}px`}
+                    key={`h-${element.id || element.tagName}-${element.boxModel.height}`}
+                    onBlur={(e) => handleStyleChange('height', e.target.value)}
+                    placeholder="e.g. auto, 48px, 100%"
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 font-mono text-xs outline-none focus:border-blue-500"
+                  />
+                  <div className="flex space-x-1">
+                    {['auto', '44px', '48px', '100%'].map((hPreset) => (
+                      <button
+                        key={hPreset}
+                        onClick={() => handleStyleChange('height', hPreset)}
+                        className="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-slate-200 border border-slate-700"
+                        title={hPreset === '44px' ? '44px iOS standard touch target' : undefined}
+                      >
+                        {hPreset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Min/Max Constraints toggle */}
+              <div>
+                <button
+                  onClick={() => setShowMinMax(!showMinMax)}
+                  className="text-[10px] text-blue-400 hover:text-blue-300 font-medium flex items-center space-x-1"
+                >
+                  <span>{showMinMax ? '▼ Hide min/max limits' : '▶ Advanced min/max constraints'}</span>
+                </button>
+
+                {showMinMax && (
+                  <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800/80">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-0.5">min-width</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. 100px"
+                        onBlur={(e) => handleStyleChange('min-width', e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-slate-200 font-mono text-[11px] outline-none"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-0.5">max-width</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. 480px"
+                        onBlur={(e) => handleStyleChange('max-width', e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-slate-200 font-mono text-[11px] outline-none"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-0.5">min-height</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. 44px"
+                        onBlur={(e) => handleStyleChange('min-height', e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-slate-200 font-mono text-[11px] outline-none"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block mb-0.5">max-height</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. 600px"
+                        onBlur={(e) => handleStyleChange('max-height', e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded px-1.5 py-1 text-slate-200 font-mono text-[11px] outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SECURE AREA / SAFE AREA CARD */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-rose-500/30 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-rose-300 font-bold uppercase tracking-wider flex items-center space-x-1.5">
+                  <Shield className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Secure Area (Safe Area)</span>
+                </span>
+                <span className="text-[9px] bg-rose-500/10 text-rose-300 px-1.5 py-0.5 rounded border border-rose-500/30 font-mono">
+                  env(safe-area-inset)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Add safe area padding to prevent UI from being cut off by the phone notch, dynamic island, or home indicator.
+              </p>
+
+              <div className="grid grid-cols-2 gap-1.5 pt-1">
+                <button
+                  onClick={() => {
+                    onLiveUpdate(
+                      { 'padding-top': 'max(var(--ion-safe-area-top, 0px), env(safe-area-inset-top, 47px))' },
+                      {},
+                      {
+                        type: 'style',
+                        name: 'padding-top',
+                        value: 'max(var(--ion-safe-area-top, 0px), env(safe-area-inset-top, 47px))'
+                      }
+                    );
+                  }}
+                  className="px-2 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[11px] font-medium transition-all text-left flex items-center space-x-1.5"
+                  title="Apply top safe-area padding for notch/status bar"
+                >
+                  <span>🛡️ Top Safe Area</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    onLiveUpdate(
+                      { 'padding-bottom': 'max(var(--ion-safe-area-bottom, 0px), env(safe-area-inset-bottom, 34px))' },
+                      {},
+                      {
+                        type: 'style',
+                        name: 'padding-bottom',
+                        value: 'max(var(--ion-safe-area-bottom, 0px), env(safe-area-inset-bottom, 34px))'
+                      }
+                    );
+                  }}
+                  className="px-2 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-[11px] font-medium transition-all text-left flex items-center space-x-1.5"
+                  title="Apply bottom safe-area padding for home indicator bar"
+                >
+                  <span>🛡️ Bottom Safe Area</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    onLiveUpdate(
+                      { 
+                        'padding-top': 'max(var(--ion-safe-area-top, 0px), env(safe-area-inset-top, 47px))',
+                        'padding-bottom': 'max(var(--ion-safe-area-bottom, 0px), env(safe-area-inset-bottom, 34px))'
+                      },
+                      {},
+                      {
+                        type: 'style',
+                        name: 'safe-area (both)',
+                        value: 'padding-top: 47px; padding-bottom: 34px;'
+                      }
+                    );
+                  }}
+                  className="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-medium transition-all text-left flex items-center space-x-1.5"
+                  title="Apply both top and bottom safe-area insets"
+                >
+                  <span>🛡️ Top + Bottom</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    onLiveUpdate(
+                      { 'padding-top': '', 'padding-bottom': '' },
+                      {},
+                      {
+                        type: 'style',
+                        name: 'clear-safe-area',
+                        value: 'reset safe-area padding'
+                      }
+                    );
+                  }}
+                  className="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-slate-200 text-[11px] font-medium transition-all text-left flex items-center space-x-1.5"
+                  title="Remove safe area padding"
+                >
+                  <span>✕ Clear Safe Area</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Visual Box Model Diagram */}
             <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex flex-col items-center">
+              <div className="w-full flex items-center justify-between mb-1">
+                <span className="text-[10px] text-amber-500/80 font-bold tracking-wider uppercase">Box Model Spacing</span>
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => {
+                      const cur = parseInt(element.boxModel.paddingTop) || 0;
+                      const next = `${cur + 4}px`;
+                      onLiveUpdate(
+                        { 'padding': next },
+                        {},
+                        { type: 'style', name: 'padding', value: next }
+                      );
+                    }}
+                    className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-mono border border-slate-700"
+                    title="Nudge padding +4px"
+                  >
+                    +4px All
+                  </button>
+                  <button
+                    onClick={() => {
+                      onLiveUpdate(
+                        { 'padding': '0px', 'margin': '0px' },
+                        {},
+                        { type: 'style', name: 'spacing', value: '0px' }
+                      );
+                    }}
+                    className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-400 hover:text-slate-200 font-mono border border-slate-700"
+                    title="Reset margin and padding to 0"
+                  >
+                    Clear 0
+                  </button>
+                </div>
+              </div>
+              
               <span className="text-[10px] text-amber-500/80 font-bold tracking-wider uppercase mb-1">Margin</span>
               
               {/* Margin Top */}
