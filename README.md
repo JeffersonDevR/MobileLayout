@@ -102,6 +102,24 @@ Open your browser to `http://localhost:3300` (or `http://localhost:5173`).
 
 ---
 
+## 🔌 MCP Integration (AI Agent Access)
+
+MobileLayout Studio exposes its inspection and generation capabilities over MCP at `POST /mcp` (JSON-RPC). The standalone `@mobile-layout/mcp` package forwards `tools/call` to that endpoint over stdio. Available tools:
+
+- `mobile_layout_status` — live Studio / proxy / device status
+- `mobile_layout_get_element` — inspect the selected canvas element
+- `mobile_layout_apply_style`, `mobile_layout_apply_attribute`, `mobile_layout_update_text`, `mobile_layout_insert_component` — live, canvas-only edits
+- `mobile_layout_scan_source` — locate the source `.html` / `.scss` file for an element
+- `mobile_layout_run_uiux_audit`, `mobile_layout_set_device`, `mobile_layout_get_llm_logs` — audit, device and telemetry
+- **`mobile_layout_generate_patch`** — send a natural-language `userIntent` to the configured OpenCode service and receive an HTML/SCSS **diff for review**
+- `mobile_layout_apply_source_patch` — write reviewed changes to disk (triggers HMR)
+
+### Review-then-apply workflow
+
+`mobile_layout_generate_patch` is read-only. It builds a `PromptContext` from `userIntent` and the optional inputs (`htmlFilePath`, `scssFilePath`, `matchedSnippet`, `fullHtmlContent`, `fullScssContent`, `visualChanges`). When the full content is omitted it is read from disk under the configured project root, and any path that escapes that root is refused. The tool calls OpenCode and returns `{ explanation, htmlDiff, scssDiff, updatedHtmlContent?, updatedScssContent? }` as MCP text content — it **never writes a project file**. Review the diff first, then pass the updated content to `mobile_layout_apply_source_patch` (or click **Apply Changes to Project** in the Studio) to persist it and trigger HMR.
+
+---
+
 ## 📂 Project Structure
 
 ```
