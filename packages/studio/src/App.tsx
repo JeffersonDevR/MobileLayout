@@ -6,7 +6,10 @@ import {
   StudioConfig, 
   DevicePreset,
   ScreenAuditReport,
-  SelectedComponentItem
+  SelectedComponentItem,
+  ProjectView,
+  ProjectFlow,
+  TargetGitInfo
 } from './types';
 import { DEVICE_PRESETS } from './constants/devices';
 import { Navbar } from './components/Navbar';
@@ -39,6 +42,14 @@ export const App: React.FC = () => {
   // Component Fix Hub & Multi-Select state
   const [isFixModalOpen, setIsFixModalOpen] = useState(false);
   const [selectedComponents, setSelectedComponents] = useState<SelectedComponentItem[]>([]);
+
+  // Discovered Views, Flows, and Target Path state
+  const [views, setViews] = useState<ProjectView[]>([]);
+  const [flows, setFlows] = useState<ProjectFlow[]>([]);
+  const [selectedViewIds, setSelectedViewIds] = useState<string[]>([]);
+  const [activePathname, setActivePathname] = useState<string>('/');
+  const [activeView, setActiveView] = useState<ProjectView | null>(null);
+  const [targetGitInfo, setTargetGitInfo] = useState<TargetGitInfo | null>(null);
 
   // Staged changes & LLM state
   const [stagedChanges, setStagedChanges] = useState<UIChangeItem[]>([]);
@@ -95,6 +106,32 @@ export const App: React.FC = () => {
     setTimeout(() => setToast(null), 4000);
   };
 
+  const fetchViews = async () => {
+    try {
+      const res = await fetch('/api/views');
+      const data = await res.json();
+      if (data.views) setViews(data.views);
+      if (data.flows) setFlows(data.flows);
+    } catch (e) {}
+  };
+
+  const handleCheckoutPath = async (pathname: string) => {
+    try {
+      const res = await fetch('/api/checkout-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pathname })
+      });
+      const data = await res.json();
+      if (data.activeView) {
+        setActiveView(data.activeView);
+      }
+      if (data.git) {
+        setTargetGitInfo(data.git);
+      }
+    } catch (e) {}
+  };
+
   // Fetch initial config & status from server and merge with localStorage
   useEffect(() => {
     fetch('/api/status')
@@ -117,6 +154,9 @@ export const App: React.FC = () => {
         }
       })
       .catch((err) => console.log('Could not connect to Studio API server:', err.message));
+
+    fetchViews();
+    handleCheckoutPath('/');
   }, []);
 
   // PostMessage communication with injected bridge in iframe
@@ -131,6 +171,18 @@ export const App: React.FC = () => {
           showToast('Inspector Bridge connected to target app!', 'success');
           // Sync current inspect mode
           postToIframe('MOBILE_LAYOUT_SET_INSPECT_MODE', { enabled: isInspectMode });
+          fetchViews();
+          if (data.payload?.pathname) {
+            setActivePathname(data.payload.pathname);
+            handleCheckoutPath(data.payload.pathname);
+          }
+          break;
+
+        case 'MOBILE_LAYOUT_ROUTE_CHANGED':
+          const newPath = data.payload?.pathname || data.payload?.href || '/';
+          console.log('[Studio] Route changed in target app:', newPath);
+          setActivePathname(newPath);
+          handleCheckoutPath(newPath);
           break;
 
         case 'MOBILE_LAYOUT_ELEMENT_SELECTED':
@@ -499,21 +551,26 @@ export const App: React.FC = () => {
 
   // Copy prompt for Antigravity / AI chat
   const handleCopyPrompt = async () => {
-    if (!matchedSource) {
-      showToast('Select an element before copying prompt.', 'error');
+    if (!matchedSource && !activeView) {
+      showToast('Select an element or view before copying prompt.', 'error');
       return;
     }
+
+    const htmlFile = matchedSource?.htmlFilePath || activeView?.htmlFilePath || '';
+    const scssFile = matchedSource?.scssFilePath || activeView?.scssFilePath;
+    const fullHtml = matchedSource?.fullHtmlContent || activeView?.fullHtmlContent || '';
+    const fullScss = matchedSource?.fullScssContent || activeView?.fullScssContent;
 
     try {
       const res = await fetch('/api/generate-clipboard-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          htmlFilePath: matchedSource.htmlFilePath,
-          scssFilePath: matchedSource.scssFilePath,
-          matchedSnippet: matchedSource.matchedSnippet,
-          fullHtmlContent: matchedSource.fullHtmlContent,
-          fullScssContent: matchedSource.fullScssContent,
+          htmlFilePath: htmlFile,
+          scssFilePath: scssFile,
+          matchedSnippet: matchedSource?.matchedSnippet || '',
+          fullHtmlContent: fullHtml,
+          fullScssContent: fullScss,
           visualChanges: stagedChanges,
           userIntent
         })
@@ -531,10 +588,15 @@ export const App: React.FC = () => {
 
   // Generate code changes using LLM (Gemini or OpenCode)
   const handleGenerateWithLLM = async () => {
-    if (!matchedSource) {
-      showToast('Please select a target element first.', 'error');
+    if (!matchedSource && !activeView) {
+      showToast('Please select a target element or view first.', 'error');
       return;
     }
+
+    const htmlFile = matchedSource?.htmlFilePath || activeView?.htmlFilePath || '';
+    const scssFile = matchedSource?.scssFilePath || activeView?.scssFilePath;
+    const fullHtml = matchedSource?.fullHtmlContent || activeView?.fullHtmlContent || '';
+    const fullScss = matchedSource?.fullScssContent || activeView?.fullScssContent;
 
     setIsGenerating(true);
     try {
@@ -543,12 +605,17 @@ export const App: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: config.llmProvider,
+          geminiApiKey: config.geminiApiKey,
+          geminiModel: config.geminiModel,
+          openCodeBaseUrl: config.openCodeBaseUrl,
+          openCodeApiKey: config.openCodeApiKey,
+          openCodeModel: config.openCodeModel,
           context: {
-            htmlFilePath: matchedSource.htmlFilePath,
-            scssFilePath: matchedSource.scssFilePath,
-            matchedSnippet: matchedSource.matchedSnippet,
-            fullHtmlContent: matchedSource.fullHtmlContent,
-            fullScssContent: matchedSource.fullScssContent,
+            htmlFilePath: htmlFile,
+            scssFilePath: scssFile,
+            matchedSnippet: matchedSource?.matchedSnippet || '',
+            fullHtmlContent: fullHtml,
+            fullScssContent: fullScss,
             visualChanges: stagedChanges,
             userIntent
           }
@@ -560,7 +627,11 @@ export const App: React.FC = () => {
         throw new Error(data.error || 'Failed to generate code changes.');
       }
 
-      setDiffResult(data);
+      setDiffResult({
+        ...data,
+        htmlFilePath: htmlFile,
+        scssFilePath: scssFile
+      });
       setIsStagingOpen(false);
       setIsDiffOpen(true);
       showToast('Code modifications generated successfully!', 'success');
@@ -714,19 +785,60 @@ export const App: React.FC = () => {
     handleSelectBySelector(selector);
   };
 
-  const handleGenerateBatchFix = async (prompt: string, components: SelectedComponentItem[]) => {
-    if (components.length === 0) {
-      showToast('Please select at least one component first.', 'error');
+  const handleToggleSelectView = (viewId: string) => {
+    setSelectedViewIds((prev) =>
+      prev.includes(viewId) ? prev.filter((id) => id !== viewId) : [...prev, viewId]
+    );
+  };
+
+  const handleSelectFlow = (flowId: string) => {
+    const flow = flows.find((f) => f.id === flowId);
+    if (!flow) return;
+    setSelectedViewIds((prev) => {
+      const allSelected = flow.viewIds.every((id) => prev.includes(id));
+      if (allSelected) {
+        return prev.filter((id) => !flow.viewIds.includes(id));
+      } else {
+        return Array.from(new Set([...prev, ...flow.viewIds]));
+      }
+    });
+  };
+
+  const handleClearSelectedViews = () => {
+    setSelectedViewIds([]);
+  };
+
+  const handleUpdateViewNote = (viewId: string, note: string) => {
+    setViews((prev) =>
+      prev.map((v) => (v.id === viewId ? { ...v, fixNote: note } : v))
+    );
+  };
+
+  const handleNavigateToPath = (path: string) => {
+    setActivePathname(path);
+    postToIframe('MOBILE_LAYOUT_NAVIGATE_TO_PATH', { path });
+    handleCheckoutPath(path);
+    showToast(`Navigated to ${path}`, 'info');
+  };
+
+  const handleGenerateBatchFix = async (
+    prompt: string,
+    scope: { components: SelectedComponentItem[]; views: ProjectView[]; flowName?: string }
+  ) => {
+    const { components, views: scopeViews, flowName } = scope;
+    if (components.length === 0 && scopeViews.length === 0 && !activeView) {
+      showToast('Please select at least one component, view, or flow first.', 'error');
       return;
     }
 
     setIsGenerating(true);
     try {
       const primaryComponent = components.find((c) => c.matchedSource) || components[0];
-      const htmlFile = primaryComponent.matchedSource?.htmlFilePath || matchedSource?.htmlFilePath || '';
-      const scssFile = primaryComponent.matchedSource?.scssFilePath || matchedSource?.scssFilePath;
-      const fullHtml = primaryComponent.matchedSource?.fullHtmlContent || matchedSource?.fullHtmlContent || '';
-      const fullScss = primaryComponent.matchedSource?.fullScssContent || matchedSource?.fullScssContent;
+      const targetView = scopeViews[0] || activeView;
+      const htmlFile = primaryComponent?.matchedSource?.htmlFilePath || targetView?.htmlFilePath || matchedSource?.htmlFilePath || '';
+      const scssFile = primaryComponent?.matchedSource?.scssFilePath || targetView?.scssFilePath || matchedSource?.scssFilePath;
+      const fullHtml = primaryComponent?.matchedSource?.fullHtmlContent || targetView?.fullHtmlContent || matchedSource?.fullHtmlContent || '';
+      const fullScss = primaryComponent?.matchedSource?.fullScssContent || targetView?.fullScssContent || matchedSource?.fullScssContent;
 
       const res = await fetch('/api/generate-patch', {
         method: 'POST',
@@ -741,10 +853,20 @@ export const App: React.FC = () => {
           context: {
             htmlFilePath: htmlFile,
             scssFilePath: scssFile,
-            matchedSnippet: primaryComponent.matchedSource?.matchedSnippet || '',
+            matchedSnippet: primaryComponent?.matchedSource?.matchedSnippet || '',
             fullHtmlContent: fullHtml,
             fullScssContent: fullScss,
             visualChanges: stagedChanges,
+            flowName,
+            selectedViews: scopeViews.map((v) => ({
+              id: v.id,
+              name: v.name,
+              route: v.route,
+              htmlFilePath: v.htmlFilePath,
+              scssFilePath: v.scssFilePath,
+              flowName: v.flowName,
+              fixNote: v.fixNote
+            })),
             selectedComponents: components.map((c) => ({
               id: c.id,
               tagName: c.tagName,
@@ -773,7 +895,8 @@ export const App: React.FC = () => {
       });
       setIsFixModalOpen(false);
       setIsDiffOpen(true);
-      showToast(`Generated fixes for ${components.length} component(s)! Review diff now.`, 'success');
+      const totalCount = components.length + scopeViews.length;
+      showToast(`Generated fixes for ${totalCount > 0 ? totalCount + ' item(s)' : 'active view'}! Review diff now.`, 'success');
     } catch (err: any) {
       showToast('Generation failed: ' + err.message, 'error');
     } finally {
@@ -782,24 +905,44 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleCopyBatchPrompt = async (prompt: string, components: SelectedComponentItem[]) => {
-    if (components.length === 0) {
-      showToast('No components selected to copy.', 'error');
+  const handleCopyBatchPrompt = async (
+    prompt: string,
+    scope: { components: SelectedComponentItem[]; views: ProjectView[]; flowName?: string }
+  ) => {
+    const { components, views: scopeViews, flowName } = scope;
+    if (components.length === 0 && scopeViews.length === 0 && !activeView) {
+      showToast('No components, views, or flows selected to copy.', 'error');
       return;
     }
 
     try {
       const primaryComponent = components.find((c) => c.matchedSource) || components[0];
+      const targetView = scopeViews[0] || activeView;
+      const htmlFile = primaryComponent?.matchedSource?.htmlFilePath || targetView?.htmlFilePath || matchedSource?.htmlFilePath || 'template.html';
+      const scssFile = primaryComponent?.matchedSource?.scssFilePath || targetView?.scssFilePath || matchedSource?.scssFilePath;
+      const fullHtml = primaryComponent?.matchedSource?.fullHtmlContent || targetView?.fullHtmlContent || matchedSource?.fullHtmlContent || '';
+      const fullScss = primaryComponent?.matchedSource?.fullScssContent || targetView?.fullScssContent || matchedSource?.fullScssContent;
+
       const res = await fetch('/api/generate-clipboard-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          htmlFilePath: primaryComponent.matchedSource?.htmlFilePath || matchedSource?.htmlFilePath || 'template.html',
-          scssFilePath: primaryComponent.matchedSource?.scssFilePath || matchedSource?.scssFilePath,
-          matchedSnippet: primaryComponent.matchedSource?.matchedSnippet || '',
-          fullHtmlContent: primaryComponent.matchedSource?.fullHtmlContent || '',
-          fullScssContent: primaryComponent.matchedSource?.fullScssContent || '',
+          htmlFilePath: htmlFile,
+          scssFilePath: scssFile,
+          matchedSnippet: primaryComponent?.matchedSource?.matchedSnippet || '',
+          fullHtmlContent: fullHtml,
+          fullScssContent: fullScss,
           visualChanges: stagedChanges,
+          flowName,
+          selectedViews: scopeViews.map((v) => ({
+            id: v.id,
+            name: v.name,
+            route: v.route,
+            htmlFilePath: v.htmlFilePath,
+            scssFilePath: v.scssFilePath,
+            flowName: v.flowName,
+            fixNote: v.fixNote
+          })),
           selectedComponents: components.map((c) => ({
             id: c.id,
             tagName: c.tagName,
@@ -933,6 +1076,10 @@ export const App: React.FC = () => {
       // Clear live overrides so target app's real HMR code takes over
       postToIframe('MOBILE_LAYOUT_RESET_LIVE_STYLE', {});
       
+      // Refresh views and target path checkout info
+      fetchViews();
+      if (activePathname) handleCheckoutPath(activePathname);
+
       // Rescan after brief delay for HMR
       setTimeout(() => {
         if (selectedElement) scanElementInProject(selectedElement);
@@ -1009,7 +1156,11 @@ export const App: React.FC = () => {
         auditIssuesCount={auditReport?.issues.length || 0}
         auditScore={auditReport?.score}
         onOpenComponentFixer={() => setIsFixModalOpen(true)}
-        selectedComponentsCount={selectedComponents.length}
+        selectedComponentsCount={selectedComponents.length + selectedViewIds.length}
+        activePathname={activePathname}
+        onNavigateToPath={handleNavigateToPath}
+        views={views}
+        targetGitInfo={targetGitInfo}
       />
 
       {/* Main Workspace Layout */}
@@ -1088,6 +1239,7 @@ export const App: React.FC = () => {
         onRemoveChange={handleRemoveChange}
         onClearChanges={handleClearAllChanges}
         matchedSource={matchedSource}
+        activeView={activeView}
         userIntent={userIntent}
         onChangeUserIntent={setUserIntent}
         onGenerateWithLLM={handleGenerateWithLLM}
@@ -1101,12 +1253,12 @@ export const App: React.FC = () => {
         isOpen={isDiffOpen}
         onClose={() => setIsDiffOpen(false)}
         explanation={diffResult?.explanation || ''}
-        originalHtml={matchedSource?.fullHtmlContent}
+        originalHtml={matchedSource?.fullHtmlContent || activeView?.fullHtmlContent}
         updatedHtml={diffResult?.updatedHtmlContent}
-        originalScss={matchedSource?.fullScssContent}
+        originalScss={matchedSource?.fullScssContent || activeView?.fullScssContent}
         updatedScss={diffResult?.updatedScssContent}
-        htmlFilePath={diffResult?.htmlFilePath || matchedSource?.htmlFilePath}
-        scssFilePath={diffResult?.scssFilePath || matchedSource?.scssFilePath}
+        htmlFilePath={diffResult?.htmlFilePath || matchedSource?.htmlFilePath || activeView?.htmlFilePath}
+        scssFilePath={diffResult?.scssFilePath || matchedSource?.scssFilePath || activeView?.scssFilePath}
         onApplyChanges={handleApplyChanges}
         isApplying={isApplying}
       />
@@ -1150,6 +1302,16 @@ export const App: React.FC = () => {
         currentInspectedElement={selectedElement}
         currentMatchedSource={matchedSource}
         auditReport={auditReport}
+        views={views}
+        flows={flows}
+        selectedViewIds={selectedViewIds}
+        onToggleSelectView={handleToggleSelectView}
+        onSelectAllViewsInFlow={handleSelectFlow}
+        onClearSelectedViews={handleClearSelectedViews}
+        onUpdateViewNote={handleUpdateViewNote}
+        activePathname={activePathname}
+        onNavigateToPath={handleNavigateToPath}
+        targetGitInfo={targetGitInfo}
         llmProvider={config.llmProvider}
         isGenerating={isGenerating}
         onGenerateBatchFix={handleGenerateBatchFix}

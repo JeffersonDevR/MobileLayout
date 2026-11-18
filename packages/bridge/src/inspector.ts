@@ -139,11 +139,13 @@ export class MobileLayoutInspector {
   private originalStyles: Map<string, string> = new Map();
   private originalAttributes: Map<string, string | null> = new Map();
   private insertedPreviews: HTMLElement[] = [];
+  private lastPathname: string = '';
 
   constructor() {
     this.setupOverlay();
     this.attachEventListeners();
     this.setupMessageBridge();
+    this.setupRouteTracking();
     this.notifyReady();
   }
 
@@ -1853,8 +1855,68 @@ export class MobileLayoutInspector {
             } catch (err) {}
           }
           break;
+
+        case 'MOBILE_LAYOUT_NAVIGATE_TO_PATH':
+          if (data.payload?.path) {
+            this.navigateToPath(data.payload.path);
+          }
+          break;
       }
     });
+  }
+
+  private setupRouteTracking() {
+    this.lastPathname = window.location.pathname;
+
+    const checkRoute = () => {
+      const current = window.location.pathname;
+      if (current !== this.lastPathname) {
+        this.lastPathname = current;
+        this.emitRouteChange();
+      }
+    };
+
+    // Intercept pushState & replaceState
+    const originalPush = history.pushState;
+    history.pushState = (...args: any[]) => {
+      const res = originalPush.apply(history, args as any);
+      setTimeout(checkRoute, 50);
+      return res;
+    };
+
+    const originalReplace = history.replaceState;
+    history.replaceState = (...args: any[]) => {
+      const res = originalReplace.apply(history, args as any);
+      setTimeout(checkRoute, 50);
+      return res;
+    };
+
+    window.addEventListener('popstate', checkRoute);
+    window.addEventListener('hashchange', checkRoute);
+
+    // Periodic check for router changes (e.g. Angular Router internal navigations)
+    setInterval(checkRoute, 600);
+  }
+
+  private emitRouteChange() {
+    this.postToStudio('MOBILE_LAYOUT_ROUTE_CHANGED', {
+      pathname: window.location.pathname,
+      href: window.location.href,
+      hash: window.location.hash,
+      title: document.title
+    });
+  }
+
+  private navigateToPath(targetPath: string) {
+    try {
+      if (window.location.pathname !== targetPath) {
+        history.pushState(null, '', targetPath);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+        this.emitRouteChange();
+      }
+    } catch (e) {
+      window.location.pathname = targetPath;
+    }
   }
 
   private postToStudio(type: string, payload: any) {
@@ -1866,7 +1928,9 @@ export class MobileLayoutInspector {
   private notifyReady() {
     this.postToStudio('MOBILE_LAYOUT_BRIDGE_READY', {
       url: window.location.href,
+      pathname: window.location.pathname,
       title: document.title
     });
+    this.emitRouteChange();
   }
 }

@@ -13,9 +13,11 @@ import {
   ChevronDown,
   Terminal,
   Check,
-  Wrench
+  Wrench,
+  Compass,
+  GitBranch
 } from 'lucide-react';
-import { DevicePreset } from '../types';
+import { DevicePreset, ProjectView, TargetGitInfo } from '../types';
 
 interface NavbarProps {
   devices: DevicePreset[];
@@ -43,6 +45,10 @@ interface NavbarProps {
   auditScore?: number;
   onOpenComponentFixer?: () => void;
   selectedComponentsCount?: number;
+  activePathname?: string;
+  onNavigateToPath?: (path: string) => void;
+  views?: ProjectView[];
+  targetGitInfo?: TargetGitInfo | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -70,16 +76,25 @@ export const Navbar: React.FC<NavbarProps> = ({
   auditIssuesCount = 0,
   auditScore,
   onOpenComponentFixer,
-  selectedComponentsCount = 0
+  selectedComponentsCount = 0,
+  activePathname = '/',
+  onNavigateToPath,
+  views = [],
+  targetGitInfo
 }) => {
   const [isDeviceMenuOpen, setIsDeviceMenuOpen] = useState(false);
+  const [isRouteMenuOpen, setIsRouteMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const routeDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on click outside
+  // Close dropdowns on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsDeviceMenuOpen(false);
+      }
+      if (routeDropdownRef.current && !routeDropdownRef.current.contains(e.target as Node)) {
+        setIsRouteMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -127,6 +142,133 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
+        </div>
+
+        {/* Active Route & Target Path Checkout */}
+        <div className="relative" ref={routeDropdownRef}>
+          <button
+            onClick={() => setIsRouteMenuOpen(!isRouteMenuOpen)}
+            className="flex items-center space-x-2 px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-slate-750 border border-slate-700/60 text-xs text-slate-300 hover:text-white transition-all"
+            title="Active Path / Route Checkout"
+          >
+            <Compass className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="font-mono text-xs max-w-[140px] truncate text-indigo-200">
+              {activePathname || '/'}
+            </span>
+            {targetGitInfo && (
+              <span className="hidden xl:flex items-center space-x-1 px-1.5 py-0.2 rounded bg-slate-700/50 text-[10px] text-slate-400 font-mono">
+                <GitBranch className="w-2.5 h-2.5 text-slate-400" />
+                <span>{targetGitInfo.branch}</span>
+              </span>
+            )}
+            <ChevronDown className="w-3 h-3 text-slate-400" />
+          </button>
+
+          {isRouteMenuOpen && (
+            <div className="absolute top-full left-0 mt-1.5 w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 py-2 text-xs max-h-[75vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+              {/* Header with Git Status */}
+              <div className="px-3 py-2 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between">
+                <div className="flex items-center space-x-1.5">
+                  <Compass className="w-3.5 h-3.5 text-indigo-400" />
+                  <span className="font-semibold text-slate-200">Target App Routes</span>
+                </div>
+                {targetGitInfo && (
+                  <div className="flex items-center space-x-1 text-[10px] text-slate-400 font-mono">
+                    <GitBranch className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-300">{targetGitInfo.branch}</span>
+                    <span className="text-slate-500">({targetGitInfo.commit})</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Checkout Path input */}
+              <div className="p-2 border-b border-slate-800">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const input = (e.currentTarget.elements.namedItem('customPath') as HTMLInputElement)?.value;
+                    if (input && onNavigateToPath) {
+                      onNavigateToPath(input.startsWith('/') ? input : '/' + input);
+                      setIsRouteMenuOpen(false);
+                    }
+                  }}
+                  className="flex items-center space-x-1"
+                >
+                  <input
+                    name="customPath"
+                    defaultValue={activePathname}
+                    placeholder="/path/to/view"
+                    className="flex-1 bg-slate-800 border border-slate-700 text-xs text-slate-200 px-2 py-1 rounded focus:outline-none focus:border-indigo-500 font-mono"
+                  />
+                  <button
+                    type="submit"
+                    className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-medium text-xs transition-colors"
+                  >
+                    Go
+                  </button>
+                </form>
+              </div>
+
+              {/* Discovered Views by Flow */}
+              <div className="py-1">
+                {views.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-slate-500 text-xs">
+                    No Ionic page routes detected yet
+                  </div>
+                ) : (
+                  ['auth', 'cliente', 'tecnico', 'proveedor', 'general'].map((flowKey) => {
+                    const flowViews = views.filter((v) => v.flow === flowKey);
+                    if (flowViews.length === 0) return null;
+                    const flowTitles: Record<string, string> = {
+                      auth: '🔐 Auth & Ingreso',
+                      cliente: '👤 Cliente Flow',
+                      tecnico: '🔧 Técnico Flow',
+                      proveedor: '📦 Proveedor Flow',
+                      general: '⚙️ General & Config'
+                    };
+                    return (
+                      <div key={flowKey} className="mb-2">
+                        <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-950/40">
+                          {flowTitles[flowKey] || flowKey} ({flowViews.length})
+                        </div>
+                        <div className="space-y-0.5 px-1 mt-0.5">
+                          {flowViews.map((v) => {
+                            const isCurrent = activePathname === v.route;
+                            return (
+                              <button
+                                key={v.id}
+                                onClick={() => {
+                                  if (onNavigateToPath) onNavigateToPath(v.route);
+                                  setIsRouteMenuOpen(false);
+                                }}
+                                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left transition-all ${
+                                  isCurrent
+                                    ? 'bg-indigo-600/20 text-indigo-300 font-semibold border border-indigo-500/30'
+                                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                }`}
+                              >
+                                <div className="truncate pr-2">
+                                  <div className="flex items-center space-x-1.5">
+                                    <span className="font-medium truncate">{v.name}</span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-500 font-mono block truncate">
+                                    {v.route}
+                                  </span>
+                                </div>
+                                {isCurrent && (
+                                  <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

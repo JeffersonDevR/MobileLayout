@@ -16,6 +16,19 @@ export interface SelectedComponentItem {
   fixNote?: string;
 }
 
+export interface SelectedViewItem {
+  id: string;
+  name: string;
+  route?: string;
+  htmlFilePath: string;
+  scssFilePath?: string;
+  relativeHtmlPath?: string;
+  fullHtmlContent?: string;
+  fullScssContent?: string;
+  flowName?: string;
+  fixNote?: string;
+}
+
 export interface PromptContext {
   htmlFilePath: string;
   scssFilePath?: string;
@@ -26,6 +39,8 @@ export interface PromptContext {
   userIntent?: string;
   elementDetails?: any;
   selectedComponents?: SelectedComponentItem[];
+  selectedViews?: SelectedViewItem[];
+  flowName?: string;
   batchFixPrompt?: string;
 }
 
@@ -61,6 +76,14 @@ TARGET FILES:
 - Template: ${ctx.htmlFilePath}
 ${ctx.scssFilePath ? `- Stylesheet: ${ctx.scssFilePath}` : ''}
 `;
+
+    if (ctx.selectedViews && ctx.selectedViews.length > 0) {
+      prompt += `\nSELECTED TARGET VIEWS / SCREENS (${ctx.selectedViews.length} views${ctx.flowName ? ` in flow: "${ctx.flowName}"` : ''}):\n`;
+      ctx.selectedViews.forEach((v, idx) => {
+        prompt += `- [View ${idx + 1}] ${v.name} (${v.route || v.id}): ${v.relativeHtmlPath || v.htmlFilePath}\n`;
+        if (v.fixNote) prompt += `  Note: ${v.fixNote}\n`;
+      });
+    }
 
     if (ctx.selectedComponents && ctx.selectedComponents.length > 0) {
       prompt += `\nSELECTED COMPONENTS TO FIX (${ctx.selectedComponents.length} items):\n`;
@@ -128,9 +151,17 @@ ${ctx.fullScssContent || '/* Empty or new scss file */'}
 
     let prompt = `### UI/UX Code Update Request (from MobileLayout Studio)
 
-**Target Component:** \`${ctx.htmlFilePath}\`
+**Target Component / View:** \`${ctx.htmlFilePath || 'Primary View'}\`
 ${ctx.scssFilePath ? `**Stylesheet:** \`${ctx.scssFilePath}\`\n` : ''}
 `;
+
+    if (ctx.selectedViews && ctx.selectedViews.length > 0) {
+      prompt += `\n**Target Views / Flow (${ctx.selectedViews.length} screens${ctx.flowName ? ` - ${ctx.flowName}` : ''}):**\n`;
+      ctx.selectedViews.forEach((v, idx) => {
+        prompt += `${idx + 1}. **${v.name}** (\`${v.route || v.id}\`) - \`${v.relativeHtmlPath || v.htmlFilePath}\`\n`;
+        if (v.fixNote) prompt += `   *Note:* ${v.fixNote}\n`;
+      });
+    }
 
     if (ctx.selectedComponents && ctx.selectedComponents.length > 0) {
       prompt += `\n**Selected Components to Fix (${ctx.selectedComponents.length}):**\n`;

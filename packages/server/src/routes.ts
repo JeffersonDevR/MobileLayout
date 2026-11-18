@@ -9,6 +9,7 @@ import { OpenCodeProvider } from './llm/opencode';
 import { PromptBuilder, PromptContext } from './llm/prompt';
 import { llmLogger } from './llm/logger';
 import { mcpHub, MCP_TOOLS_DEFINITIONS, handleMcpToolCall } from './mcp-handler';
+import { ViewsManager } from './views';
 
 export interface AppState {
   targetUrl: string;
@@ -217,6 +218,29 @@ export function createApiRouter(proxyManager: DevProxyManager, state: AppState):
     }
   });
 
+  // Discover all pages/views and flows in target project
+  router.get('/views', async (req: Request, res: Response) => {
+    try {
+      const rootDir = (req.query.projectPath as string) || state.projectPath;
+      const data = await ViewsManager.discover(rootDir);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || String(err) });
+    }
+  });
+
+  // Checkout path of target app: resolves view, template code, and git info
+  router.post('/checkout-path', async (req: Request, res: Response) => {
+    try {
+      const { pathname, projectPath } = req.body;
+      const rootDir = projectPath || state.projectPath;
+      const result = await ViewsManager.checkoutPath(pathname || '/', rootDir);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || String(err) });
+    }
+  });
+
   // Generate clipboard prompt (ready for Antigravity or AI chat)
   router.post('/generate-clipboard-prompt', (req: Request, res: Response) => {
     const ctx: PromptContext = req.body;
@@ -241,24 +265,55 @@ export function createApiRouter(proxyManager: DevProxyManager, state: AppState):
     const ctx: PromptContext = req.body.context;
     const providerType = req.body.provider || state.llmProvider;
 
-    // Hydrate template/scss if selectedComponents are present
-    if ((!ctx.htmlFilePath || !ctx.fullHtmlContent) && ctx.selectedComponents && ctx.selectedComponents.length > 0) {
-      const firstWithFile = ctx.selectedComponents.find((c) => c.htmlFilePath);
-      if (firstWithFile && firstWithFile.htmlFilePath) {
-        ctx.htmlFilePath = firstWithFile.htmlFilePath;
-        if (!ctx.fullHtmlContent && fs.existsSync(firstWithFile.htmlFilePath)) {
-          ctx.fullHtmlContent = fs.readFileSync(firstWithFile.htmlFilePath, 'utf-8');
+    // Hydrate template/scss if selectedViews or selectedComponents or active view are present
+    if (!ctx.htmlFilePath || !ctx.fullHtmlContent) {
+      if (ctx.selectedViews && ctx.selectedViews.length > 0) {
+        const firstView = ctx.selectedViews[0];
+        ctx.htmlFilePath = firstView.htmlFilePath;
+        ctx.scssFilePath = ctx.scssFilePath || firstView.scssFilePath;
+        if (!ctx.fullHtmlContent && fs.existsSync(firstView.htmlFilePath)) {
+          ctx.fullHtmlContent = fs.readFileSync(firstView.htmlFilePath, 'utf-8');
         }
+        if (!ctx.fullScssContent && firstView.scssFilePath && fs.existsSync(firstView.scssFilePath)) {
+          ctx.fullScssContent = fs.readFileSync(firstView.scssFilePath, 'utf-8');
+        }
+      } else if (ctx.selectedComponents && ctx.selectedComponents.length > 0) {
+        const firstWithFile = ctx.selectedComponents.find((c) => c.htmlFilePath);
+        if (firstWithFile && firstWithFile.htmlFilePath) {
+          ctx.htmlFilePath = firstWithFile.htmlFilePath;
+          if (!ctx.fullHtmlContent && fs.existsSync(firstWithFile.htmlFilePath)) {
+            ctx.fullHtmlContent = fs.readFileSync(firstWithFile.htmlFilePath, 'utf-8');
+          }
+        }
+      } else {
+        // Fallback: auto-resolve active view from project root so changes are NEVER blocked by unselected components
+        try {
+          const autoView = await ViewsManager.resolvePathToView('/', state.projectPath);
+          if (autoView) {
+            ctx.htmlFilePath = autoView.htmlFilePath;
+            ctx.scssFilePath = ctx.scssFilePath || autoView.scssFilePath;
+            if (fs.existsSync(autoView.htmlFilePath)) {
+              ctx.fullHtmlContent = fs.readFileSync(autoView.htmlFilePath, 'utf-8');
+            }
+            if (autoView.scssFilePath && fs.existsSync(autoView.scssFilePath)) {
+              ctx.fullScssContent = fs.readFileSync(autoView.scssFilePath, 'utf-8');
+            }
+          }
+        } catch (e) {}
       }
     }
 
     const promptSummary = {
-      elementTag: ctx?.selectedComponents?.length 
+      elementTag: ctx?.selectedViews?.length
+        ? `${ctx.selectedViews.length} views: ${ctx.selectedViews.map(v => v.name).join(', ')}`
+        : ctx?.selectedComponents?.length 
         ? `${ctx.selectedComponents.length} components: ${ctx.selectedComponents.map(c => `<${c.tagName}>`).slice(0, 3).join(', ')}`
         : ctx?.matchedSnippet ? ctx.matchedSnippet.slice(0, 30) : undefined,
       intent: ctx?.batchFixPrompt || ctx?.userIntent,
       stagedChangesCount: ctx?.visualChanges ? ctx.visualChanges.length : 0,
       selectedComponentsCount: ctx?.selectedComponents ? ctx.selectedComponents.length : 0,
+      selectedViewsCount: ctx?.selectedViews ? ctx.selectedViews.length : 0,
+      flowName: ctx?.flowName,
       htmlFile: ctx?.htmlFilePath,
       scssFile: ctx?.scssFilePath
     };

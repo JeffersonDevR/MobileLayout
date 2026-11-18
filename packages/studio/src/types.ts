@@ -79,6 +79,36 @@ export interface SelectedComponentItem {
   };
 }
 
+export interface ProjectView {
+  id: string;
+  name: string;
+  route: string;
+  htmlFilePath: string;
+  scssFilePath?: string;
+  relativeHtmlPath: string;
+  relativeScssPath?: string;
+  flow: 'auth' | 'cliente' | 'tecnico' | 'proveedor' | 'general';
+  flowName: string;
+  title: string;
+  fullHtmlContent?: string;
+  fullScssContent?: string;
+  fixNote?: string;
+}
+
+export interface ProjectFlow {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  viewIds: string[];
+}
+
+export interface TargetGitInfo {
+  branch: string;
+  commit: string;
+  clean: boolean;
+}
+
 export interface UIChangeItem {
   id?: string;
   type: 'style' | 'attribute' | 'class' | 'insert' | 'remove';
