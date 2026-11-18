@@ -74,10 +74,10 @@ prepares a write. No SDD.
 - [x] T2 done — 5 tests added (success, JSON-fence fallback, upstream error, path-escape refusal,
       declaration check), README updated, all checks run.
 - [x] T3 done — one work-unit commit on feature branch `feature/mcp-generate-patch`.
-- [ ] T4 pending — scope expansion authorized by the user after the end-to-end 401: switch
-      `OpenCodeProvider` from Bearer to HTTP Basic auth for the local OpenCode serve. The user
-      supplied the local serve password; it is stored only in the gitignored
-      `packages/mobile-layout-settings.json` and must never appear in a document, log, or commit.
+- [x] T4 done — scope expansion authorized by the user after the end-to-end 401:
+      `OpenCodeProvider` now sends HTTP Basic auth (`opencode:<server password>`) for the local
+      serve. The credential lives only in the gitignored `packages/mobile-layout-settings.json`
+      and never appears in a document, log, test, or commit. End-to-end verified.
 
 ## Verification Evidence
 Recorded 2026-11-18. Commands run from the MobileLayout repository root; `npm.cmd`/`npx.cmd`
@@ -101,33 +101,40 @@ used because PowerShell blocks `npm.ps1`/`npx.ps1`.
   OpenCode V2 review transport is unavailable by contract, so NO native review was started and
   no PASS was synthesized. This is an unavailable verifier, not a clean review.
 
-## End-to-End Smoke Test (blocked by environment credential)
+## End-to-End Smoke Test (PASS)
 
-The running Studio had already reloaded the source, so the live `/mcp` tool list now contains
-12 tools including `mobile_layout_generate_patch` (verified with `tools/list`). A real
-`tools/call` with an inline template and a UI intent reached the provider but returned
-`isError: true` with `OpenCode API returned 401: Authentication required`.
+The live `/mcp` tool list contains 12 tools including `mobile_layout_generate_patch`. A real
+`tools/call` with an inline template and a UI intent returned `isError: false` with
+`success: true`, a human-readable explanation, and a generated SCSS diff adding high-contrast
+Ionic CSS custom properties and a 44px minimum touch target. No project file was written.
 
-Diagnostics (values hidden; only status codes recorded):
-- `http://0.0.0.0:4096` is unreachable from this host (`No es posible conectar con el servidor
-  remoto`); `http://localhost:4096` responds. The configured base URL should be `localhost`.
-- The `openCodeApiKey` persisted in `mobile-layout-settings.json` is rejected by the live
-  service as `Bearer` and also as HTTP Basic password (`opencode:<key>`) — both 401.
-- The password in `~/.config/opencode/service.json` belongs to the managed service on port
-  49198 and is also rejected on 4096 (Basic and Bearer, both 401).
-- OpenCode v2.2.5 is running. Official docs state the serve API uses HTTP Basic auth with
-  username `opencode` and the server password, while `OpenCodeProvider` currently sends
-  `Authorization: Bearer <apiKey>`. Because no valid credential was available, the smoke test
-  cannot distinguish a wrong scheme from a stale credential; both need checking once a valid
-  password/token is supplied.
+Root causes found and fixed along the way:
+1. `openCodeBaseUrl` pointed at `http://0.0.0.0:4096`, an unreachable client destination;
+   changed to `http://localhost:4096`.
+2. The persisted `openCodeApiKey` was an `oc_sk_...` cloud Console key, which is not accepted
+   by a local `opencode serve`. The user supplied the actual serve password.
+3. `OpenCodeProvider` sent `Authorization: Bearer`, but OpenCode v2 serve requires HTTP Basic
+   with fixed username `opencode` (verified: raw Basic request returned HTTP 200).
+4. A PowerShell `Set-Content -Encoding UTF8` write added a UTF-8 BOM to the settings file; Node's
+   `JSON.parse` rejected it, so the handler silently fell back to defaults with no credential.
+   Rewritten with `UTF8Encoding($false)` (no BOM); E2E then passed.
 
-This is an environment/credential blocker, not a failing unit test. No source change was made
-outside the authorized Scope: fixing `packages/server/src/llm/opencode.ts` auth would require
-explicit scope expansion.
+The credential exists only in the gitignored `packages/mobile-layout-settings.json`; a staging
+check confirmed neither commit contains it.
+
+## T4 Verification
+- Raw probe: `POST http://localhost:4096/api/experimental/generate/text` with Basic auth =>
+  HTTP 200, `{"data":{"text":"OK"}}`.
+- `npm.cmd run build --workspace=@mobile-layout/server`: PASS.
+- `npx.cmd tsx tests/opencode.test.ts`: PASS (6/6).
+- `npx.cmd tsx tests/mcp-generate-patch.test.ts`: PASS (5/5).
+- `npx.cmd tsx tests/run-tests.ts`: PASS (7/7).
+- Work-unit commit: `9ae9b98 fix(mcp): use Basic auth for local OpenCode serve` (4 files).
+  Staged-content scan found no credential value.
+- Post-commit RDD assessment: same typed `high`/`review_due: true` with the OpenCode-runtime
+  ineligibility detail; no native review started.
 
 ## Next Step
-Obtain a valid credential for the OpenCode service on port 4096, set `openCodeBaseUrl` to
-`http://localhost:4096`, and confirm whether Basic or Bearer is accepted; if Basic is required,
-authorize a follow-up fix to `OpenCodeProvider`. Then re-run the end-to-end `tools/call`.
-Native review remains unavailable on this runtime; a human may review commit `6db63e7` under
-ordinary repository policy.
+Closed. The new tool is callable after the OpenCode session is reconnected so its tool catalog
+refreshes. Native review remains unavailable on this runtime; a human may review commits
+`6db63e7` and `9ae9b98` under ordinary repository policy.
