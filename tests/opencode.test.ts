@@ -83,14 +83,15 @@ describe('OpenCodeProvider (native REST text generation)', () => {
     assert.match(result.error!, /unsupported model: foo\/bar/);
   });
 
-  it('sends a Bearer token when an API key is provided and no header otherwise', async (t) => {
+  it('sends an HTTP Basic header when an API key is provided and no header otherwise', async (t) => {
     const withKey = t.mock.method(globalThis, 'fetch', async () =>
       jsonResponse({ data: { text: '{"explanation":"ok"}' } })
     );
-    await new OpenCodeProvider({ ...baseConfig, apiKey: 'secret-token' }).generateCodeChanges(ctx);
+    await new OpenCodeProvider({ ...baseConfig, apiKey: 'test-password' }).generateCodeChanges(ctx);
     let init = withKey.mock.calls[0].arguments[1] as RequestInit;
     let headers = init.headers as Record<string, string>;
-    assert.strictEqual(headers['Authorization'], 'Bearer secret-token');
+    const expectedCredentials = Buffer.from('opencode:test-password').toString('base64');
+    assert.strictEqual(headers['Authorization'], `Basic ${expectedCredentials}`);
 
     withKey.mock.restore();
 

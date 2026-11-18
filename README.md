@@ -81,7 +81,7 @@ Open your browser to `http://localhost:3300` (or `http://localhost:5173`).
 
 1. Start an OpenCode V2 service: run `opencode serve --service`, or use the managed background service.
 2. Set your provider and model in `opencode.json` (for example, provider `anthropic`, model `claude-sonnet-4`).
-3. In Studio Settings, select **OpenCode** and use service URL `http://localhost:4096` (add an optional Bearer token for a remote service). Set **Model Name** to `providerID/model`, e.g. `anthropic/claude-sonnet-4`, or leave it blank to use OpenCode's configured default.
+3. In Studio Settings, select **OpenCode** and use service URL `http://localhost:4096` (optionally enter the service password for HTTP Basic auth on a remote service). Set **Model Name** to `providerID/model`, e.g. `anthropic/claude-sonnet-4`, or leave it blank to use OpenCode's configured default.
 4. OpenCode only generates text: MobileLayout turns it into a `.html`/`.scss` diff for review in Monaco and applies it to your files only when you click **Apply Changes to Project**. OpenCode never edits your files directly.
 
 ---

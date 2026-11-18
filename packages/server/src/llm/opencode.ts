@@ -79,7 +79,10 @@ export class OpenCodeProvider {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       const apiKey = (this.config.apiKey || '').trim();
       if (apiKey) {
-        headers['Authorization'] = `Bearer ${apiKey}`;
+        // OpenCode serve uses HTTP Basic with the fixed username "opencode";
+        // the configured apiKey is the server password sent as the Basic password.
+        const credentials = Buffer.from(`opencode:${apiKey}`).toString('base64');
+        headers['Authorization'] = `Basic ${credentials}`;
       }
 
       const response = await fetch(url, {
