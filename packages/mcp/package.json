@@ -1,0 +1,27 @@
+{
+  "name": "@mobile-layout/mcp",
+  "version": "1.0.0",
+  "description": "Model Context Protocol (MCP) Server connecting MobileLayout with OpenCode and AI assistants",
+  "main": "dist/index.js",
+  "bin": {
+    "mobile-layout-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "opencode",
+    "mobile-layout",
+    "ionic",
+    "angular"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "typescript": "^5.7.0"
+  }
+}

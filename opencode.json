@@ -1,0 +1,10 @@
+{
+  "mcp": {
+    "servers": {
+      "mobile-layout": {
+        "type": "remote",
+        "url": "http://localhost:3300/mcp"
+      }
+    }
+  }
+}

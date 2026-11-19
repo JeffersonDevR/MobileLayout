@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UIChangeItem, MatchedSource } from '../types';
+import { UIChangeItem, MatchedSource, ProjectView } from '../types';
 import { 
   X, 
   Sparkles, 
@@ -9,7 +9,8 @@ import {
   FileCode, 
   AlertCircle,
   Loader2,
-  Send
+  Send,
+  Layers
 } from 'lucide-react';
 
 interface StagingDrawerProps {
@@ -19,6 +20,7 @@ interface StagingDrawerProps {
   onRemoveChange: (index: number) => void;
   onClearChanges: () => void;
   matchedSource: MatchedSource | null;
+  activeView?: ProjectView | null;
   userIntent: string;
   onChangeUserIntent: (intent: string) => void;
   onGenerateWithLLM: () => void;
@@ -34,6 +36,7 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
   onRemoveChange,
   onClearChanges,
   matchedSource,
+  activeView,
   userIntent,
   onChangeUserIntent,
   onGenerateWithLLM,
@@ -50,6 +53,8 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const hasTarget = Boolean(matchedSource || activeView);
 
   return (
     <div className="fixed inset-y-0 right-0 w-96 bg-slate-900 border-l border-slate-800 shadow-2xl z-50 flex flex-col select-none animate-in slide-in-from-right duration-200">
@@ -78,17 +83,22 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
       {/* Target File Context */}
       <div className="p-3 bg-slate-950/60 border-b border-slate-800 text-xs">
         <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-1">
-          Target Component
+          Target Template & Scope
         </span>
         {matchedSource ? (
           <div className="flex items-center space-x-2 text-emerald-400 font-mono text-[11px] truncate">
             <FileCode className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">{matchedSource.relativeHtmlPath}:{matchedSource.lineNumber}</span>
           </div>
+        ) : activeView ? (
+          <div className="flex items-center space-x-2 text-violet-400 font-mono text-[11px] truncate">
+            <Layers className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{activeView.relativeHtmlPath} ({activeView.name})</span>
+          </div>
         ) : (
           <div className="flex items-center space-x-1.5 text-amber-400 text-[11px]">
             <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            <span>Select an element to target its Angular template</span>
+            <span>Targeting active mobile view for changes</span>
           </div>
         )}
       </div>
@@ -157,7 +167,7 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
         {/* Main Generate Button */}
         <button
           onClick={onGenerateWithLLM}
-          disabled={isGenerating || !matchedSource}
+          disabled={isGenerating || (!hasTarget && stagedChanges.length === 0)}
           className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-medium text-xs flex items-center justify-center space-x-2 shadow-lg shadow-purple-500/20 transition-all cursor-pointer"
         >
           {isGenerating ? (
@@ -176,7 +186,7 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
         {/* Copy Prompt for Antigravity */}
         <button
           onClick={handleCopy}
-          disabled={!matchedSource}
+          disabled={!hasTarget && stagedChanges.length === 0}
           className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 hover:text-white font-medium text-xs flex items-center justify-center space-x-2 border border-slate-700 transition-all"
         >
           {copied ? (
