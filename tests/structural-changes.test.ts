@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { PromptBuilder, PromptContext, UIChangeItem } from '../packages/server/src/llm/prompt';
 import { MCP_TOOLS_DEFINITIONS } from '../packages/server/src/mcp-handler';
+import { MCP_TOOLS_DEFINITIONS as STDIO_TOOLS } from '../packages/mcp/src/tools';
 
 function ctxWith(changes: UIChangeItem[]): PromptContext {
   return {
@@ -145,5 +146,62 @@ describe('Structural prompt-field sanitization (risk advisory)', () => {
     );
 
     assert.ok(!clip.includes('\r'), 'clipboard prompt must strip control characters');
+  });
+});
+
+describe('Review-advisory pins (T7): stdio schema, system prompt, fallbacks, clipboard', () => {
+  it('pins the stdio MCP package schema copy (side-effect-free import)', () => {
+    const def = STDIO_TOOLS.find((tool: any) => tool.name === 'mobile_layout_generate_patch') as any;
+    assert.ok(def, 'stdio generate_patch definition should exist');
+    const props = def.inputSchema.properties.visualChanges.items.properties;
+    assert.ok(props.type.enum.includes('reorder'), 'stdio schema enum must include reorder');
+    assert.ok(props.type.enum.includes('duplicate'), 'stdio schema enum must include duplicate');
+    for (const field of ['selector', 'selectorPath', 'relativeTo', 'direction']) {
+      assert.ok(props[field], `stdio schema must declare ${field}`);
+    }
+    assert.strictEqual(props.direction.enum.join(','), 'up,down', 'direction domain must stay up|down');
+  });
+
+  it('pins the structural system-prompt guideline and the renumbered output guideline', () => {
+    const sys = PromptBuilder.buildSystemPrompt();
+    assert.ok(sys.includes('STRUCTURAL CHANGES:'), 'guideline 4 (structural execution) must stay present');
+    assert.ok(sys.includes('[REORDER], [DUPLICATE], or [REMOVE]'), 'guideline 4 must name the structural markers');
+    assert.ok(
+      sys.includes('5. Output your response ONLY as a strict JSON object'),
+      'the output-schema guideline must remain numbered 5'
+    );
+  });
+
+  it('pins reorder fallback behavior: absent direction renders BEFORE, absent relativeTo uses the value as sibling', () => {
+    const noDirection = PromptBuilder.buildUserPrompt(
+      ctxWith([{ type: 'reorder', name: 'Reorder <ion-card>', value: 'Moved relative to <ion-item>' }])
+    );
+    const line = noDirection.split('\n').find((l) => l.includes('[REORDER]'))!;
+    assert.ok(
+      line.includes('BEFORE its sibling Moved relative to <ion-item>'),
+      'pinned fallback semantics: the free-text value stands in as the sibling'
+    );
+
+    const nothing = PromptBuilder.buildUserPrompt(
+      ctxWith([{ type: 'reorder', name: 'Reorder <ion-card>', value: '' }])
+    );
+    const bare = nothing.split('\n').find((l) => l.includes('[REORDER]'))!;
+    assert.ok(
+      bare.includes('BEFORE its sibling the adjacent element'),
+      'total-absence fallback must be the adjacent element'
+    );
+  });
+
+  it('pins the clipboard prompt duplicate and remove branches', () => {
+    const clip = PromptBuilder.buildClipboardPrompt(
+      ctxWith([
+        { type: 'duplicate', name: 'Duplicate <ion-button>', value: 'Copy', selector: 'ion-button#transferBtn' },
+        { type: 'remove', name: '<ion-badge>', value: 'ion-badge.notify', selector: 'ion-badge.notify' }
+      ])
+    );
+    assert.ok(clip.includes('**DUPLICATE**'), 'clipboard duplicate branch must be tagged');
+    assert.ok(clip.includes('insert an exact copy'), 'clipboard duplicate instruction must render');
+    assert.ok(clip.includes('**REMOVE**'), 'clipboard remove branch must be tagged');
+    assert.ok(clip.includes('delete this exact element'), 'clipboard remove instruction must render');
   });
 });
