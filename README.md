@@ -39,7 +39,7 @@ With MobileLayout Studio, you can visually inspect, tweak, and design interfaces
   - Side-by-side Monaco diff editor showing exact changes to `.html` templates and `.scss` stylesheets before committing.
   - "Apply Changes to Project" safely writes changes to disk and triggers instant Angular Hot Module Replacement (HMR).
   - Optional **Direct apply** mode: flip the toggle in the staging drawer (or the changes dock) to write generated changes straight to disk without opening the review; **Undo Last Apply** restores the per-file backups.
-  - Every apply is sandboxed: target paths resolving outside your configured project root are refused, and a per-file `<name>.mobile-layout.bak` backup is written next to each patched file.
+  - Applies are sandboxed whenever a project root is configured: target paths resolving outside it are refused, and a per-file `<name>.mobile-layout.bak` backup is written next to each patched file (an unconfigured server keeps the legacy unsandboxed behavior).
 
 ---
 

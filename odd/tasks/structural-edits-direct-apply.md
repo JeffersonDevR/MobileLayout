@@ -75,6 +75,11 @@ T7 | follow-up | inline | review-advisory test hardening: pin the stdio MCP sche
      record post-change opencode/mcp suite results in the log | done — 4 pin tests GREEN
      (13/13); stdio definitions extracted to packages/mcp/src/tools.ts (import-safe); the
      T1-record gap was closed in L12; commit: this slice
+T8 | follow-up | inline | refuter-corroborated regression fixes (ordinary commits; the native
+     correction binding was unreachable — see L15): single-file lastApply recording, (none)
+     marker + per-field caps (value 2000 / target 1000), Unicode/C1 sanitizer extension,
+     best-effort backup unlink, README sandbox scope | done — RED (5+1) -> GREEN (17/17 +
+     18/18), all suites green; commit: this slice
 
 Route declaration: T1 inline (one understood change across contract copies; no writer reason).
 T2/T3/T4 parallel writers (three independent units with disjoint edit surfaces launched together
@@ -297,3 +302,41 @@ on the Monaco bullet; direct-apply step in the workflow; MCP visualChanges struc
 note); full-suite seam check: run-tests.ts 7/7, opencode.test.ts 6/6,
 mcp-generate-patch.test.ts 5/5, patcher-safety.test.ts 17/17, structural-changes.test.ts
 13/13 — all green in one pass.
+L15 (2026-11-19, final-slice review + provider defect + T8): the final consolidated review
+(lineage review-feb77e2c1ccf8b7b, consent GRANTED) captured both lenses (risk: 4 WARNING + 2
+SUGGESTION; reliability: 2 CRITICAL + 5 WARNING/SUGGESTION). The reduction demanded a provider
+refuter; the refuter RAN via the delayed transport and CORROBORATED both CRITICALs (R3-1:
+single-file applies record both matched paths in lastApply so undo 500s wholesale against a
+backup that never existed; R3-2: the sanitized generic line dropped the baseline '(none)'
+previousValue marker and hard-caps values at 200 chars). Every capture-refuter submission path
+refused the opencode runtime with the typed envelope `review capture-refuter provider runtime
+"opencode" has no Go-owned role capture contract` (--input with --agent, --input without
+--agent, and --execute). Per the mandatory Provider Defect Handoff the user consented to
+"Report the defect and continue"; the definitive open+closed lookup found the canonical
+tracker Gentleman-Programming/gentle-ai#5769 (OpenCode refuter role capture refused; ten
+consented occurrences across 4.3.1-4.5.1, all with no verifiable published fix — this
+occurrence adds the 4.6.0 stable data point). The occurrence comment could NOT be posted: gh
+is not installed on this machine and extracting the stored HTTPS credential is prohibited; the
+privacy-scrubbed draft is preserved at odd/provider-defect-5769-occurrence-comment.md for
+manual posting. The exact captured decline invocation was then executed once and validated
+(action declined, consent declined_this_candidate, target match; no receipt created; future
+reviews stay enabled); the bound STATUS still reports the lineage frozen at
+provider_refuter_required — consumer state preserved, recorded as an observable consistent
+with the tracker's prior occurrences. T8 then fixed the corroborated findings as ordinary
+follow-up commits (the documented precedent on the tracker): (R3-1) applyToDisk records
+lastApply keyed by content presence — single-file generations no longer register the
+untouched path, for both the direct and DiffModal flows; (R3-2) the generic line restores the
+baseline "(none)" marker and uses per-field caps (previousValue/value 2000, targeting
+selectorPath/selector/sibling 1000, name 200); (R3-9) sanitizePromptText also strips C1
+controls, Unicode line/paragraph separators, zero-width/bidi characters, and BOM; (R3-10)
+restoreBackup's backup unlink is best-effort — a locked file no longer turns a successful
+restore into an error (pinned by a mocked-unlink test); (R3-7) the README sandbox claim is
+scoped to configured project roots. TDD: RED observed (5 failures in structural-changes, 1 in
+patcher-safety) then GREEN (17/17 + 18/18); the studio build caught and fixed a type error in
+the lastApply state widening; final sweep 7/7 + 6/6 + 5/5 + 18/18 + 17/17 = 53/53, studio
+build 1612 modules baseline parity. Remaining advisories NOT acted on (recorded for future
+work): undo lacks a staleness snapshot of post-apply manual edits (risk lens; a redo backup
+before overwrite is the candidate fix), duplicate clones share the original's DOM id so
+canvas-side targeting cannot distinguish them (R3-4; candidate fix: suffix the clone's id),
+route-level undo/apply wiring is untested (R3-6), and the bridge emission contract has no
+automated coverage (R3-5).

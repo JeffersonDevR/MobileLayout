@@ -210,7 +210,15 @@ export class FilePatcher {
 
       const backupContent = fs.readFileSync(backupPath, 'utf-8');
       fs.writeFileSync(req.filePath, backupContent, 'utf-8');
-      fs.unlinkSync(backupPath);
+
+      // Best-effort cleanup: the restore has already succeeded, so a failed
+      // unlink (e.g. a locked file) must not turn a successful undo into an
+      // error. A stale backup is harmless — the next apply overwrites it.
+      try {
+        fs.unlinkSync(backupPath);
+      } catch {
+        // Intentionally swallowed; see the comment above.
+      }
 
       return { success: true, filePath: req.filePath, restored: true };
     } catch (err: any) {

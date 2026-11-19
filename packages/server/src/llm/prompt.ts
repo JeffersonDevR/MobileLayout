@@ -75,12 +75,13 @@ Do not wrap the JSON in extra markdown fences or explanations outside the JSON o
 
   /**
    * Neutralizes prompt-structure smuggling in free-text fields rendered
-   * into LLM prompts: strips control characters (newline injection) and caps
-   * the length so one staged change cannot dominate the prompt.
+   * into LLM prompts: strips control characters (C0/DEL/C1, Unicode line
+   * and paragraph separators, zero-width and bidi characters) and caps the
+   * length so one staged change cannot dominate the prompt.
    */
   private static sanitizePromptText(value: unknown, maxLength = 200): string {
     const flat = String(value ?? '')
-      .replace(/[\u0000-\u001F\u007F]/g, ' ')
+      .replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\uFEFF]/g, ' ')
       .trim();
     return flat.length > maxLength ? flat.slice(0, maxLength) : flat;
   }
@@ -91,12 +92,16 @@ Do not wrap the JSON in extra markdown fences or explanations outside the JSON o
    * of the generic "previous -> new" property format.
    */
   private static formatChangeLine(c: UIChangeItem): string {
-    const target = PromptBuilder.sanitizePromptText(c.selectorPath || c.selector || c.name);
+    // Targeting fields carry deep canvas hierarchies: generous cap.
+    const target = PromptBuilder.sanitizePromptText(c.selectorPath || c.selector || c.name, 1000);
     const structural = PromptBuilder.structuralInstruction(c);
     if (structural) {
       return `- [${c.type.toUpperCase()}] ${PromptBuilder.sanitizePromptText(c.name)} (target: ${target}): ${structural}`;
     }
-    return `- [${c.type.toUpperCase()}] ${PromptBuilder.sanitizePromptText(c.name)}: "${PromptBuilder.sanitizePromptText(c.previousValue)}" -> "${PromptBuilder.sanitizePromptText(c.value)}"`;
+    // Baseline format preserved: the '(none)' marker for absent previous
+    // values, and a generous cap so long baseline-valid content (text
+    // updates) is not silently truncated.
+    return `- [${c.type.toUpperCase()}] ${PromptBuilder.sanitizePromptText(c.name)}: "${PromptBuilder.sanitizePromptText(c.previousValue, 2000) || '(none)'}" -> "${PromptBuilder.sanitizePromptText(c.value, 2000)}"`;
   }
 
   /**
@@ -107,7 +112,7 @@ Do not wrap the JSON in extra markdown fences or explanations outside the JSON o
     switch (c.type) {
       case 'reorder': {
         const rawSibling = c.relativeTo || c.value || 'the adjacent element';
-        const sibling = PromptBuilder.sanitizePromptText(rawSibling) || 'the adjacent element';
+        const sibling = PromptBuilder.sanitizePromptText(rawSibling, 1000) || 'the adjacent element';
         return `move this exact element ${c.direction === 'down' ? 'AFTER' : 'BEFORE'} its sibling ${sibling}. Preserve all Angular bindings and structural directives on the moved element.`;
       }
       case 'duplicate':
@@ -199,12 +204,12 @@ ${ctx.fullScssContent || '/* Empty or new scss file */'}
   public static buildClipboardPrompt(ctx: PromptContext): string {
     const changesFormatted = (ctx.visualChanges || [])
       .map((c) => {
-        const target = PromptBuilder.sanitizePromptText(c.selectorPath || c.selector || c.name);
+        const target = PromptBuilder.sanitizePromptText(c.selectorPath || c.selector || c.name, 1000);
         const structural = PromptBuilder.structuralInstruction(c);
         if (structural) {
           return `- **${c.type.toUpperCase()}** \`${PromptBuilder.sanitizePromptText(c.name)}\` (target: \`${target}\`): ${structural}`;
         }
-        return `- **${c.type}** \`${PromptBuilder.sanitizePromptText(c.name)}\`: \`${PromptBuilder.sanitizePromptText(c.value)}\``;
+        return `- **${c.type}** \`${PromptBuilder.sanitizePromptText(c.name)}\`: \`${PromptBuilder.sanitizePromptText(c.value, 2000)}\``;
       })
       .join('\n');
 

@@ -337,4 +337,25 @@ describe('FilePatcher restoreBackup (undo for direct-apply)', () => {
       fs.rmSync(scratch, { recursive: true, force: true });
     }
   });
+
+  it('still reports success when the backup unlink fails after the restore write', async (t: any) => {
+    const scratch = makeScratchDir();
+    t.mock.method(fs, 'unlinkSync', () => {
+      throw new Error('unlink boom');
+    });
+    try {
+      const target = writeVictim(scratch, 'AFTER APPLY');
+      fs.writeFileSync(`${target}.mobile-layout.bak`, 'BEFORE APPLY', 'utf-8');
+
+      const restore = FilePatcher.restoreBackup({ filePath: target, projectRoot: scratch });
+      assert.ok(restore.success, `restore must succeed despite unlink failure, got: ${restore.error}`);
+      assert.strictEqual(
+        fs.readFileSync(target, 'utf-8'),
+        'BEFORE APPLY',
+        'the restored content must be on disk'
+      );
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  });
 });

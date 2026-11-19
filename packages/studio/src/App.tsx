@@ -1106,7 +1106,7 @@ export const App: React.FC = () => {
   // Direct-apply mode: skip the Monaco review and write generated content
   // straight to disk (undo restores the per-file backups).
   const [directApplyMode, setDirectApplyMode] = useState(false);
-  const [lastApply, setLastApply] = useState<{ htmlFilePath: string; scssFilePath?: string } | null>(null);
+  const [lastApply, setLastApply] = useState<{ htmlFilePath?: string; scssFilePath?: string } | null>(null);
 
   // Write generated content straight to disk via the sandboxed apply endpoint.
   // Shared by the reviewed apply flow (DiffModal) and the direct-apply mode.
@@ -1132,7 +1132,17 @@ export const App: React.FC = () => {
       showToast('Changes written to disk! HMR updating — Undo available in the Changes panel.', 'success');
       setIsDiffOpen(false);
       setStagedChanges([]);
-      setLastApply({ htmlFilePath: payload.htmlFilePath, scssFilePath: payload.scssFilePath });
+      // Record only the paths that were actually patched (content present):
+      // single-file generations must not register the untouched file, or
+      // undo would fail wholesale against a backup that never existed.
+      const patchedHtml = payload.updatedHtmlContent !== undefined;
+      const patchedScss = payload.updatedScssContent !== undefined;
+      if (patchedHtml || patchedScss) {
+        setLastApply({
+          htmlFilePath: patchedHtml ? payload.htmlFilePath : undefined,
+          scssFilePath: patchedScss ? payload.scssFilePath : undefined
+        });
+      }
 
       // Clear live overrides so target app's real HMR code takes over
       postToIframe('MOBILE_LAYOUT_RESET_LIVE_STYLE', {});

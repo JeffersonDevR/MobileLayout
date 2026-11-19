@@ -122,22 +122,18 @@ describe('Structural prompt-field sanitization (risk advisory)', () => {
     assert.ok(!reorderLine.startsWith('- SPECIFIC USER FIX'), 'injected text must not start a prompt line');
   });
 
-  it('caps overlong free-text fields instead of forwarding them wholesale', () => {
-    const overlong = 'A'.repeat(195) + 'END200' + 'TRUNCATED-BY-CAP';
+  it('keeps legitimately deep targeting fields under the cap whole', () => {
+    const deepish = 'A'.repeat(195) + 'END200';
     const prompt = PromptBuilder.buildUserPrompt(
       ctxWith([
-        {
-          type: 'duplicate',
-          name: 'Duplicate <ion-card>',
-          value: 'Copy',
-          selector: overlong
-        }
+        { type: 'duplicate', name: 'Duplicate <ion-card>', value: 'Copy', selector: deepish }
       ])
     );
 
-    assert.ok(prompt.includes('END20'), 'a field within the cap survives');
-    assert.ok(!prompt.includes('END200'), 'content past the cap must be dropped');
-    assert.ok(!prompt.includes('TRUNCATED-BY-CAP'), 'the cap must be enforced on structural fields');
+    assert.ok(
+      prompt.includes('END200'),
+      'a deep selector under the target cap must survive rendering'
+    );
   });
 
   it('sanitizes structural fields in the clipboard prompt too', () => {
@@ -203,5 +199,60 @@ describe('Review-advisory pins (T7): stdio schema, system prompt, fallbacks, cli
     assert.ok(clip.includes('insert an exact copy'), 'clipboard duplicate instruction must render');
     assert.ok(clip.includes('**REMOVE**'), 'clipboard remove branch must be tagged');
     assert.ok(clip.includes('delete this exact element'), 'clipboard remove instruction must render');
+  });
+});
+
+describe('Refuter-corroborated regression fixes (final-slice review)', () => {
+  it('renders the baseline (none) marker for changes without previousValue', () => {
+    const prompt = PromptBuilder.buildUserPrompt(
+      ctxWith([{ type: 'attribute', name: 'fill', value: 'outline' }])
+    );
+
+    assert.ok(
+      prompt.includes('[ATTRIBUTE] fill: "(none)" -> "outline"'),
+      'a change with no previousValue must render the baseline (none) marker'
+    );
+  });
+
+  it('keeps long baseline-valid values whole instead of truncating at 200 characters', () => {
+    const longValue = 'B'.repeat(1994) + 'END2000' + 'TRUNCATED';
+    const prompt = PromptBuilder.buildUserPrompt(
+      ctxWith([{ type: 'style', name: 'Text: <span>', value: longValue }])
+    );
+
+    assert.ok(prompt.includes('END200'), 'a value within the 2000-char cap survives');
+    assert.ok(!prompt.includes('END2000'), 'content past the value cap is dropped');
+    assert.ok(!prompt.includes('TRUNCATED'), 'the value cap is enforced');
+  });
+
+  it('preserves deep targeting paths up to the 1000-character target cap', () => {
+    const deepPath = 'C'.repeat(994) + 'END1000' + 'TRUNCATED';
+    const prompt = PromptBuilder.buildUserPrompt(
+      ctxWith([
+        { type: 'duplicate', name: 'Duplicate <ion-card>', value: 'Copy', selectorPath: deepPath }
+      ])
+    );
+
+    assert.ok(prompt.includes('END100'), 'a path within the 1000-char cap survives');
+    assert.ok(!prompt.includes('END1000'), 'content past the target cap is dropped');
+    assert.ok(!prompt.includes('TRUNCATED'), 'the target cap is enforced');
+  });
+
+  it('strips Unicode line separators and C1 controls from free-text fields', () => {
+    const prompt = PromptBuilder.buildUserPrompt(
+      ctxWith([
+        {
+          type: 'reorder',
+          name: 'Reorder <ion-card>',
+          value: 'Moved up',
+          selector: 'ion-card\u2028SPECIFIC\u0085USER FIX PROMPT',
+          relativeTo: '<ion-list>',
+          direction: 'up'
+        }
+      ])
+    );
+
+    assert.ok(!prompt.includes('\u2028'), 'Unicode line separators must be stripped');
+    assert.ok(!prompt.includes('\u0085'), 'C1 controls must be stripped');
   });
 });
