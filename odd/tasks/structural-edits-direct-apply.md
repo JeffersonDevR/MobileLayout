@@ -67,11 +67,14 @@ T5 | S2 | inline after T3+T4 | direct-apply generate→apply chain + undo toast 
      (`App.tsx`, `ReactiveChangesDock.tsx`, `StagingDrawer.tsx`, `prompt.ts`, `patcher.ts`,
      `routes.ts`) | done — RED (3+3) -> GREEN (17/17 + 9/9), all suites green, builds PASS;
      commit: this slice
-T6 | S1,S2 | inline | README/docs + full-suite seam check + close | commit: pending
+T6 | S1,S2 | inline | README/docs + full-suite seam check + close | done — 4 README sections
+     updated, all 5 suites green in the seam check; commit: this slice
 T7 | follow-up | inline | review-advisory test hardening: pin the stdio MCP schema copy,
      system-prompt structural guideline + renumbered output guideline, reorder fallback
      behavior, and clipboard duplicate/remove branches; correct the L5 pinning overstatement;
-     record post-change opencode/mcp suite results in the log | commit: pending
+     record post-change opencode/mcp suite results in the log | done — 4 pin tests GREEN
+     (13/13); stdio definitions extracted to packages/mcp/src/tools.ts (import-safe); the
+     T1-record gap was closed in L12; commit: this slice
 
 Route declaration: T1 inline (one understood change across contract copies; no writer reason).
 T2/T3/T4 parallel writers (three independent units with disjoint edit surfaces launched together
@@ -271,3 +274,26 @@ changed handlers and render wiring (grep + region reads recorded). Risk: item 2 
 /api/undo-apply is a client-reachable write path; it routes through the same FilePatcher
 containment (projectRoot from server state) and its refusal behavior is pinned by the restore
 tests; everything else in the unit reuses sandboxed primitives.
+L13 (2026-11-19, T4 review outcome + slice assess): the T4 risk lens arrived via the delayed
+path — 2 WARNINGs, both explicitly pre-existing (lexical link-indirection containment;
+optional-root fallback) — and was captured; native reduction APPROVED (9 advisory findings
+total, none blocking, no correction); the exact acknowledgement burned the authority
+(gentle-ai.review-acknowledged/v1, lineage review-26e7585b640eacc3). Open-slice assess after
+the T5 commit (base-ref d317be1, committed-only): risk medium (executable_change on
+packages/bridge/src/inspector.ts), 11 paths / 1221 lines, review_due false (under_budget) —
+the slice T2+T3+T5 stays pending below the review budget with T4's range individually
+acknowledged.
+L14 (2026-11-19, T7 + T6 evidence, inline): T7 — the stdio MCP_TOOLS_DEFINITIONS moved
+verbatim into a new side-effect-free module packages/mcp/src/tools.ts (index.ts imports it;
+the readline loop stays in the binary entry), enabling a real import-based pin; 4 pin tests
+added to tests/structural-changes.test.ts (stdio schema enum + 4 targeting fields + direction
+domain; system-prompt structural guideline + renumbered output guideline 5; reorder fallback
+semantics — absent direction -> BEFORE, absent relativeTo -> value as sibling, total absence ->
+'the adjacent element'; clipboard duplicate/remove branches). GREEN: structural-changes.test.ts
+13/13; mcp build PASS (tsc). The L5 pinning overstatement is corrected by these pins, and the
+T1 regression-record gap (post-change opencode/mcp suites) was closed in L12. T6 — README
+updated in 4 places (new Structural Canvas Edits feature bullet; direct-apply + sandbox notes
+on the Monaco bullet; direct-apply step in the workflow; MCP visualChanges structural-types
+note); full-suite seam check: run-tests.ts 7/7, opencode.test.ts 6/6,
+mcp-generate-patch.test.ts 5/5, patcher-safety.test.ts 17/17, structural-changes.test.ts
+13/13 — all green in one pass.

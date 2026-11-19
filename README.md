@@ -22,6 +22,9 @@ With MobileLayout Studio, you can visually inspect, tweak, and design interfaces
   - **CSS Custom Properties**: Direct visual editing of `--background`, `--color`, `--border-radius`, `--padding-start`, etc.
   - **Visual Box Model**: Interactive margin and padding diagram with real-time numeric inputs.
   - **Flexbox / Grid Layout**: Visual controls for direction, align, justify, and gap.
+- **🧱 Structural Canvas Edits**:
+  - Drag-reorder, move up/down, ⧉ duplicate, and delete are staged as typed changes carrying full selector paths.
+  - The LLM prompt renders them as explicit instructions (`[REORDER] <element> (target: <selectorPath>): move this exact element BEFORE/AFTER its sibling <relativeTo>…`), so generated code mirrors the canvas exactly — no more prose disguised as a "style" change.
 - **🧩 Ionic Component Catalog**:
   - Quick palette of essential Ionic components (`<ion-card>`, `<ion-button>`, `<ion-item>`, `<ion-list>`, `<ion-badge>`, `<ion-chip>`, `<ion-searchbar>`, `<ion-toggle>`).
   - 1-click copy snippet or stage component insertion.
@@ -35,6 +38,8 @@ With MobileLayout Studio, you can visually inspect, tweak, and design interfaces
 - **📝 Monaco Diff Review & 1-Click Apply**:
   - Side-by-side Monaco diff editor showing exact changes to `.html` templates and `.scss` stylesheets before committing.
   - "Apply Changes to Project" safely writes changes to disk and triggers instant Angular Hot Module Replacement (HMR).
+  - Optional **Direct apply** mode: flip the toggle in the staging drawer (or the changes dock) to write generated changes straight to disk without opening the review; **Undo Last Apply** restores the per-file backups.
+  - Every apply is sandboxed: target paths resolving outside your configured project root are refused, and a per-file `<name>.mobile-layout.bak` backup is written next to each patched file.
 
 ---
 
@@ -99,6 +104,7 @@ Open your browser to `http://localhost:3300` (or `http://localhost:5173`).
    - In the Monaco Diff viewer, inspect the proposed changes side-by-side with your original code.
    - Click **Apply Changes to Project** to write the changes directly to your files.
    - Your running Angular/Ionic app immediately reloads via HMR!
+   - Prefer fewer clicks? Enable **Direct apply (skip diff review)** in the staging drawer and generation writes straight to disk; **Undo Last Apply** rolls the last apply back from its backup.
 
 ---
 
@@ -116,7 +122,7 @@ MobileLayout Studio exposes its inspection and generation capabilities over MCP 
 
 ### Review-then-apply workflow
 
-`mobile_layout_generate_patch` is read-only. It builds a `PromptContext` from `userIntent` and the optional inputs (`htmlFilePath`, `scssFilePath`, `matchedSnippet`, `fullHtmlContent`, `fullScssContent`, `visualChanges`). When the full content is omitted it is read from disk under the configured project root, and any path that escapes that root is refused. The tool calls OpenCode and returns `{ explanation, htmlDiff, scssDiff, updatedHtmlContent?, updatedScssContent? }` as MCP text content — it **never writes a project file**. Review the diff first, then pass the updated content to `mobile_layout_apply_source_patch` (or click **Apply Changes to Project** in the Studio) to persist it and trigger HMR.
+`mobile_layout_generate_patch` is read-only. It builds a `PromptContext` from `userIntent` and the optional inputs (`htmlFilePath`, `scssFilePath`, `matchedSnippet`, `fullHtmlContent`, `fullScssContent`, `visualChanges`). When the full content is omitted it is read from disk under the configured project root, and any path that escapes that root is refused. `visualChanges` accepts the structural types (`reorder`, `duplicate`, `remove`) with `selector`/`selectorPath`/`relativeTo`/`direction` targeting; the prompt renders them as explicit move/copy/delete instructions, and all free-text fields are sanitized (control characters stripped, length capped) before they reach the model. The tool calls OpenCode and returns `{ explanation, htmlDiff, scssDiff, updatedHtmlContent?, updatedScssContent? }` as MCP text content — it **never writes a project file**. Review the diff first, then pass the updated content to `mobile_layout_apply_source_patch` (or click **Apply Changes to Project** in the Studio) to persist it and trigger HMR.
 
 ---
 
