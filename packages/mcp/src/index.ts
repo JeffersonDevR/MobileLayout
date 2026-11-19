@@ -238,14 +238,18 @@ const MCP_TOOLS_DEFINITIONS = [
           items: {
             type: 'object',
             properties: {
-              type: { type: 'string', enum: ['style', 'attribute', 'class', 'insert', 'remove'] },
+              type: { type: 'string', enum: ['style', 'attribute', 'class', 'insert', 'remove', 'reorder', 'duplicate'] },
               name: { type: 'string' },
               value: { type: 'string' },
-              previousValue: { type: 'string' }
+              previousValue: { type: 'string' },
+              selector: { type: 'string', description: 'CSS selector identifying the element for structural changes.' },
+              selectorPath: { type: 'string', description: 'Full selector path from the canvas root for unambiguous targeting.' },
+              relativeTo: { type: 'string', description: 'reorder: the sibling element (selector or tag) the element moves relative to.' },
+              direction: { type: 'string', enum: ['up', 'down'], description: 'reorder: movement direction relative to the sibling.' }
             },
             required: ['type', 'name', 'value']
           },
-          description: 'Staged visual changes to apply.'
+          description: 'Staged visual changes to apply. Structural types (reorder/duplicate/remove) identify elements by selector/selectorPath.'
         }
       },
       required: ['userIntent']
