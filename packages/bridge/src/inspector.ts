@@ -293,7 +293,11 @@ export class MobileLayoutInspector {
 
     const upBtn = createBtn('▲', 'Move element up (swap with previous sibling)', () => this.moveElement('up'));
     const downBtn = createBtn('▼', 'Move element down (swap with next sibling)', () => this.moveElement('down'));
-    
+
+    // Duplicate element button (structural op, staged as a preview clone)
+    const dupBtn = createBtn('⧉', 'Duplicate element', () => this.duplicateSelectedElement());
+    dupBtn.style.color = '#a78bfa';
+
     // Clear / Deselect button
     const deselectBtn = createBtn('✕', 'Deselect element (Esc)', () => {
       this.clearSelection();
@@ -307,10 +311,14 @@ export class MobileLayoutInspector {
       } else {
         const tag = this.selectedElement?.tagName?.toLowerCase() || 'element';
         const sel = this.selectedElement ? (this.selectedElement.id ? `#${this.selectedElement.id}` : tag) : tag;
+        // Compute the structural path before hiding: the element stays in the
+        // DOM (display:none), so the hierarchy is still resolvable.
+        const path = this.selectedElement ? this.buildSelectorPath(this.selectedElement) : undefined;
         this.hideSelectedElement();
         this.postToStudio('MOBILE_LAYOUT_ELEMENT_REMOVED_FROM_CANVAS', {
           tagName: tag,
-          selector: sel
+          selector: sel,
+          selectorPath: path
         });
       }
     });
@@ -320,6 +328,7 @@ export class MobileLayoutInspector {
     this.selectionToolbar.appendChild(fixBtn);
     this.selectionToolbar.appendChild(upBtn);
     this.selectionToolbar.appendChild(downBtn);
+    this.selectionToolbar.appendChild(dupBtn);
     this.selectionToolbar.appendChild(deselectBtn);
     this.selectionToolbar.appendChild(delBtn);
     this.selectionBox.appendChild(this.selectionToolbar);
@@ -378,10 +387,13 @@ export class MobileLayoutInspector {
           const tag = this.selectedElement.tagName.toLowerCase();
           const targetTag = dropTarget.tagName.toLowerCase();
           this.postToStudio('MOBILE_LAYOUT_ELEMENT_REORDERED', {
-            direction: dropIsAfter ? 'after' : 'before',
+            direction: dropIsAfter ? 'down' : 'up',
             tagName: tag,
             targetSelector: this.selectedElement.id ? `#${this.selectedElement.id}` : tag,
-            relativeTo: dropTarget.id ? `#${dropTarget.id}` : targetTag
+            relativeTo: dropTarget.id ? `#${dropTarget.id}` : targetTag,
+            selector: this.buildElementSelector(this.selectedElement),
+            selectorPath: this.buildSelectorPath(this.selectedElement),
+            relativeToSelector: this.buildElementSelector(dropTarget)
           });
         }
       };
@@ -923,6 +935,36 @@ export class MobileLayoutInspector {
     this.postToStudio('MOBILE_LAYOUT_ELEMENT_SELECTED', details);
   }
 
+  /**
+   * DOM hierarchy segments (tag.firstClass) from the first child of body down
+   * to the element. Shared by ElementDetails.selectorPath and structural
+   * message payloads so every surface targets elements identically.
+   */
+  private buildHierarchy(el: HTMLElement): string[] {
+    const hierarchy: string[] = [];
+    let curr: HTMLElement | null = el;
+    while (curr && curr !== document.body && curr !== document.documentElement) {
+      const name = curr.tagName.toLowerCase();
+      const cls = curr.classList.length ? `.${curr.classList[0]}` : '';
+      hierarchy.unshift(`${name}${cls}`);
+      curr = curr.parentElement;
+    }
+    return hierarchy;
+  }
+
+  /** Stable selector path (' > '-joined hierarchy) for unambiguous targeting. */
+  private buildSelectorPath(el: HTMLElement): string {
+    return this.buildHierarchy(el).join(' > ');
+  }
+
+  /** Best short-form selector for an element: #id, tag.firstClass, or bare tag. */
+  private buildElementSelector(el: HTMLElement): string {
+    if (el.id) return `#${el.id}`;
+    const tag = el.tagName.toLowerCase();
+    const firstClass = el.classList.length ? `.${el.classList[0]}` : '';
+    return `${tag}${firstClass}`;
+  }
+
   private extractElementDetails(el: HTMLElement): ElementDetails {
     const computed = window.getComputedStyle(el);
     const rect = el.getBoundingClientRect();
@@ -944,14 +986,7 @@ export class MobileLayoutInspector {
     }
 
     // Build hierarchy
-    const hierarchy: string[] = [];
-    let curr: HTMLElement | null = el;
-    while (curr && curr !== document.body && curr !== document.documentElement) {
-      const name = curr.tagName.toLowerCase();
-      const cls = curr.classList.length ? `.${curr.classList[0]}` : '';
-      hierarchy.unshift(`${name}${cls}`);
-      curr = curr.parentElement;
-    }
+    const hierarchy = this.buildHierarchy(el);
 
     // Text content preview
     const textContent = (el.innerText || el.textContent || '').trim().slice(0, 100);
@@ -1180,12 +1215,7 @@ export class MobileLayoutInspector {
     let contrastPass = true;
     let semanticsPass = true;
 
-    const getSelector = (el: HTMLElement): string => {
-      if (el.id) return `#${el.id}`;
-      const tag = el.tagName.toLowerCase();
-      const firstClass = el.classList.length ? `.${el.classList[0]}` : '';
-      return `${tag}${firstClass}`;
-    };
+    const getSelector = (el: HTMLElement): string => this.buildElementSelector(el);
 
     const parseRgb = (colorStr: string): [number, number, number] | null => {
       const match = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
@@ -1611,7 +1641,10 @@ export class MobileLayoutInspector {
           direction: 'up',
           tagName: tag,
           targetSelector: this.selectedElement.id ? `#${this.selectedElement.id}` : tag,
-          relativeTo: prev.id ? `#${prev.id}` : prevTag
+          relativeTo: prev.id ? `#${prev.id}` : prevTag,
+          selector: this.buildElementSelector(this.selectedElement),
+          selectorPath: this.buildSelectorPath(this.selectedElement),
+          relativeToSelector: this.buildElementSelector(prev)
         });
       }
     } else if (direction === 'down') {
@@ -1625,10 +1658,57 @@ export class MobileLayoutInspector {
           direction: 'down',
           tagName: tag,
           targetSelector: this.selectedElement.id ? `#${this.selectedElement.id}` : tag,
-          relativeTo: next.id ? `#${next.id}` : nextTag
+          relativeTo: next.id ? `#${next.id}` : nextTag,
+          selector: this.buildElementSelector(this.selectedElement),
+          selectorPath: this.buildSelectorPath(this.selectedElement),
+          relativeToSelector: this.buildElementSelector(next)
         });
       }
     }
+  }
+
+  /**
+   * Duplicates the selected element: clones it with every attribute and child,
+   * inserts the clone immediately after the original in the same parent, and
+   * marks it as a canvas preview exactly like palette-inserted previews. The
+   * studio receives one MOBILE_LAYOUT_ELEMENT_DUPLICATED message identifying
+   * the ORIGINAL element; the clone stays revertible through the existing
+   * MOBILE_LAYOUT_REMOVE_INSERTED preview-removal channel via its previewId.
+   */
+  public duplicateSelectedElement(): string | undefined {
+    if (!this.selectedElement) return undefined;
+    const original = this.selectedElement;
+    if (!original.parentElement) return undefined;
+
+    // Identify the original before any DOM change.
+    const tagName = original.tagName.toLowerCase();
+    const selector = this.buildElementSelector(original);
+    const selectorPath = this.buildSelectorPath(original);
+
+    // Canvas-preview only: clone the rendered state (all attributes and
+    // children); Angular bindings are re-established by the LLM apply step.
+    const clone = original.cloneNode(true) as HTMLElement;
+    const previewId = 'preview-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+    clone.setAttribute('data-mobile-layout-preview', 'true');
+    clone.setAttribute('data-preview-id', previewId);
+    clone.style.outline = '2px dashed #a855f7';
+    clone.style.outlineOffset = '2px';
+    clone.title = 'Live Preview Insertion (Staged for LLM)';
+
+    original.insertAdjacentElement('afterend', clone);
+    this.insertedPreviews.push(clone);
+
+    this.postToStudio('MOBILE_LAYOUT_ELEMENT_DUPLICATED', {
+      tagName,
+      selector,
+      selectorPath,
+      previewId
+    });
+
+    // Select the clone (mirrors the palette-insert flow) so it can be
+    // restyled, moved, or removed like any other preview element.
+    this.selectElement(clone);
+    return previewId;
   }
 
   public updateTextContent(newText: string) {

@@ -53,7 +53,8 @@ T1 | S1,S4 | inline | structural change contract + prompt rendering: all four UI
      `buildUserPrompt`/`buildClipboardPrompt`/system prompt, MCP schemas,
      `tests/structural-changes.test.ts` | done — RED (5 fail/1 pass) -> GREEN (6/6); commit: this slice
 T2 | S1 | delegated writer A (parallel) | bridge duplicate op + selectorPath/relativeTo in
-     structural payloads (`packages/bridge/src/inspector.ts`) | commit: pending
+     structural payloads (`packages/bridge/src/inspector.ts`) | done — build PASS (parent
+     spot-check re-run), +100/-20 in one file; commit: this slice
 T3 | S1 | delegated writer B (parallel) | studio staging typed structural changes + duplicate
      message handler + revert + dock/drawer labels (`App.tsx`, `components/*`) | commit: pending
 T4 | S3 | delegated writer C (parallel) | patcher path sandbox + per-file backup
@@ -127,3 +128,40 @@ server (tsc), mcp (tsc), studio (tsc && vite build, 1612 modules). Structural re
 prompt.ts confirmed. Risk: item 3 — shared UIChangeItem contract consumed by four surfaces; the
 change is additive (new types/fields, no removal), and all four copies were updated in lockstep
 with tests pinning rendering + schema.
+L6 (2026-11-19, T1 RDD review evidence): assess over the slice (base-ref 01ac051, committed-only,
+untracked excluded): risk high (reason process_boundary on packages/mcp/src/index.ts), 7 paths /
+330 lines, review_due true. Preflight STATUS -> START (lineage review-c0f5770559673fc9, lenses
+review-risk + review-reliability, correction budget 165). The user GRANTED the consent envelope
+(relayed losslessly; choice "Review this change"). Two reviewer Task relays were refused by the
+OpenCode review transport (`opencode_review_transport_relay_refused (reason: provider_failed)`);
+the bound STATUS reoffered the slots, one relaunch was refused identically, and both slots were
+then declared unachievable via `review capture-unachievable` (reason relay_provider_failed). The
+lifecycle stopped terminally with `unachievable_lens_slot`. NO review PASS was synthesized; the
+review record is unavailable-on-this-runtime, consistent with the prior feature's recorded
+OpenCode transport ineligibility (odd/tasks/mcp-generate-patch.md). T1 verification therefore
+stands on its own observed checks (L5). Delivery remains human-owned under ordinary repository
+policy. Human options left open (not decided by the agent): leave RDD on (assessments for future
+high-risk commits will stop at the same transport wall), disable clone-locally
+(`gentle-ai review mode disable --scope clone`), or run review sessions from a runtime with
+supported review transport (claude-code/codex).
+L7 (2026-11-19, T2 evidence, delegated writer A): bridge duplicate op implemented in
+packages/bridge/src/inspector.ts only (+100/-20): ⧉ toolbar button clones the selected element
+(all attributes + children), inserts after the original, preview-marked byte-identically to
+palette-insert sites (data-mobile-layout-preview, data-preview-id, dashed outline, preview
+title), registered in insertedPreviews, posts MOBILE_LAYOUT_ELEMENT_DUPLICATED {tagName,
+selector?, selectorPath?, previewId?} then ELEMENT_SELECTED for the clone. Both REORDERED sites
+(drag + move buttons) enriched with selector/selectorPath/relativeToSelector; delete-button
+REMOVED payload enriched with selectorPath. Shared helpers extracted (buildHierarchy /
+buildSelectorPath / buildElementSelector) and reused by extractElementDetails + runScreenAudit.
+TDD exception: no DOM harness exists for the bridge; structural readback + build are the
+functional checks. Writer verification: npm.cmd run build --workspace=@mobile-layout/bridge PASS
+(39.6kb, 10ms). Parent spot-check: same build re-run PASS. Reconciliations: (1) undo channel is
+the EXISTING MOBILE_LAYOUT_REMOVE_INSERTED {previewId} (bridge :1772, Studio App.tsx:487/:525) —
+the frozen fallback name is dead; writer B was corrected mid-run. (2) drag-reorder direction
+normalized to the frozen 'up'|'down' domain (drop-after -> 'down', drop-before -> 'up'); the old
+'after'/'before' would have rendered inverted instructions in the server prompt — latent bug
+fixed at the source. (3) relativeToSelector is message-only; T3 maps relativeToSelector ||
+relativeTo into UIChangeItem.relativeTo. Risk: item 3 — the shared-helper extraction touches
+code paths existing behavior also uses (ELEMENT_SELECTED extraction, screen audit); verified
+behavior-preserving by writer readback (identical selectorPath join; getSelector delegation
+preserves all call-site outputs) and the parent build spot-check.
