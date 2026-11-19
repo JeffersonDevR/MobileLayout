@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { UIChangeItem, MatchedSource, ProjectView } from '../types';
-import { 
-  X, 
-  Sparkles, 
-  Copy, 
-  Check, 
-  Trash2, 
-  FileCode, 
+import {
+  X,
+  Sparkles,
+  Copy,
+  Check,
+  Trash2,
+  FileCode,
   AlertCircle,
   Loader2,
   Send,
   ArrowUpDown,
-  Layers
+  Layers,
+  RotateCcw
 } from 'lucide-react';
 
 interface StagingDrawerProps {
@@ -28,6 +29,12 @@ interface StagingDrawerProps {
   onCopyPrompt: () => void;
   isGenerating: boolean;
   llmProvider: 'gemini' | 'opencode';
+  /** Direct-apply mode: skip the Monaco review and write generated changes straight to disk. */
+  directApplyMode: boolean;
+  onToggleDirectApply: () => void;
+  /** True while a recent apply's backups can still be restored. */
+  canUndoApply: boolean;
+  onUndoApply: () => void;
 }
 
 // Presentation metadata for structural change types; existing types keep
@@ -58,7 +65,11 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
   onGenerateWithLLM,
   onCopyPrompt,
   isGenerating,
-  llmProvider
+  llmProvider,
+  directApplyMode,
+  onToggleDirectApply,
+  canUndoApply,
+  onUndoApply
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -190,6 +201,34 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
 
       {/* Drawer Actions */}
       <div className="p-4 border-t border-slate-800 bg-slate-900/90 space-y-2">
+        {/* Direct-apply toggle + undo of the last apply */}
+        <div className="flex items-center justify-between text-xs">
+          <label
+            className="flex items-center gap-2 cursor-pointer select-none"
+            title="Direct apply: skip the diff review and write generated changes straight to disk"
+          >
+            <input
+              type="checkbox"
+              checked={directApplyMode}
+              onChange={onToggleDirectApply}
+              className="accent-purple-500 w-3.5 h-3.5 cursor-pointer"
+            />
+            <span className={directApplyMode ? 'text-purple-300 font-semibold' : 'text-slate-400'}>
+              Direct apply (skip diff review)
+            </span>
+          </label>
+          {canUndoApply && (
+            <button
+              onClick={onUndoApply}
+              className="px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 text-xs font-medium flex items-center gap-1.5 transition-all"
+              title="Restore the pre-apply backups of the last applied change"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Undo Last Apply</span>
+            </button>
+          )}
+        </div>
+
         {/* Main Generate Button */}
         <button
           onClick={onGenerateWithLLM}
@@ -204,7 +243,11 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              <span>Generate Code Changes ({llmProvider.toUpperCase()})</span>
+              <span>
+                {directApplyMode
+                  ? 'Generate & Apply Directly'
+                  : `Generate Code Changes (${llmProvider.toUpperCase()})`}
+              </span>
             </>
           )}
         </button>

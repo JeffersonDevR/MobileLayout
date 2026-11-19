@@ -543,6 +543,13 @@ export const App: React.FC = () => {
 
   // Revert all visual changes and restore original canvas
   const handleClearAllChanges = () => {
+    // Remove staged preview elements (palette inserts + duplicates) from the
+    // live canvas, not just their styling overrides.
+    stagedChanges.forEach((change) => {
+      if ((change.type === 'insert' || change.type === 'duplicate') && change.previewId) {
+        postToIframe('MOBILE_LAYOUT_REMOVE_INSERTED', { previewId: change.previewId });
+      }
+    });
     postToIframe('MOBILE_LAYOUT_RESET_LIVE_STYLE', {});
     postToIframe('MOBILE_LAYOUT_UNHIDE_ELEMENT', {});
     setStagedChanges([]);
@@ -658,6 +665,22 @@ export const App: React.FC = () => {
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to generate code changes.');
+      }
+
+      // Direct-apply mode: skip the Monaco review and write straight to disk.
+      if (directApplyMode) {
+        if (!data.updatedHtmlContent && !data.updatedScssContent) {
+          showToast('Generation returned no file content; opening the diff review instead.', 'error');
+        } else {
+          const applied = await applyToDisk({
+            htmlFilePath: htmlFile,
+            updatedHtmlContent: data.updatedHtmlContent,
+            scssFilePath: scssFile,
+            updatedScssContent: data.updatedScssContent
+          });
+          if (applied) setIsStagingOpen(false);
+          return;
+        }
       }
 
       setDiffResult({
@@ -1080,21 +1103,25 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Apply code changes to files on disk
-  const handleApplyChanges = async () => {
-    if (!diffResult) return;
+  // Direct-apply mode: skip the Monaco review and write generated content
+  // straight to disk (undo restores the per-file backups).
+  const [directApplyMode, setDirectApplyMode] = useState(false);
+  const [lastApply, setLastApply] = useState<{ htmlFilePath: string; scssFilePath?: string } | null>(null);
 
+  // Write generated content straight to disk via the sandboxed apply endpoint.
+  // Shared by the reviewed apply flow (DiffModal) and the direct-apply mode.
+  const applyToDisk = async (payload: {
+    htmlFilePath: string;
+    updatedHtmlContent?: string;
+    scssFilePath?: string;
+    updatedScssContent?: string;
+  }): Promise<boolean> => {
     setIsApplying(true);
     try {
       const res = await fetch('/api/apply-patch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          htmlFilePath: diffResult.htmlFilePath,
-          updatedHtmlContent: diffResult.updatedHtmlContent,
-          scssFilePath: diffResult.scssFilePath,
-          updatedScssContent: diffResult.updatedScssContent
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json();
@@ -1102,13 +1129,14 @@ export const App: React.FC = () => {
         throw new Error(data.error || 'Failed to apply changes.');
       }
 
-      showToast('Changes written to disk! Angular HMR is updating...', 'success');
+      showToast('Changes written to disk! HMR updating — Undo available in the Changes panel.', 'success');
       setIsDiffOpen(false);
       setStagedChanges([]);
-      
+      setLastApply({ htmlFilePath: payload.htmlFilePath, scssFilePath: payload.scssFilePath });
+
       // Clear live overrides so target app's real HMR code takes over
       postToIframe('MOBILE_LAYOUT_RESET_LIVE_STYLE', {});
-      
+
       // Refresh views and target path checkout info
       fetchViews();
       if (activePathname) handleCheckoutPath(activePathname);
@@ -1117,11 +1145,55 @@ export const App: React.FC = () => {
       setTimeout(() => {
         if (selectedElement) scanElementInProject(selectedElement);
       }, 1000);
+      return true;
     } catch (err: any) {
       showToast(err.message, 'error');
+      return false;
     } finally {
       setIsApplying(false);
     }
+  };
+
+  // Undo the most recent apply by restoring the patcher's per-file backups.
+  const handleUndoApply = async () => {
+    if (!lastApply) return;
+    try {
+      const res = await fetch('/api/undo-apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lastApply)
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to undo the last apply.');
+      }
+
+      showToast('Last apply reverted from backup! Angular HMR is updating...', 'success');
+      setLastApply(null);
+
+      // Clear live overrides so the restored code takes over cleanly
+      postToIframe('MOBILE_LAYOUT_RESET_LIVE_STYLE', {});
+      fetchViews();
+      if (activePathname) handleCheckoutPath(activePathname);
+      setTimeout(() => {
+        if (selectedElement) scanElementInProject(selectedElement);
+      }, 1000);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Apply code changes (reviewed in the Monaco diff) to files on disk
+  const handleApplyChanges = async () => {
+    if (!diffResult) return;
+
+    await applyToDisk({
+      htmlFilePath: diffResult.htmlFilePath,
+      updatedHtmlContent: diffResult.updatedHtmlContent,
+      scssFilePath: diffResult.scssFilePath,
+      updatedScssContent: diffResult.updatedScssContent
+    });
   };
 
   // Save settings with dual persistence (localStorage + disk)
@@ -1261,6 +1333,10 @@ export const App: React.FC = () => {
           onGenerateWithLLM={handleGenerateWithLLM}
           onCopyPrompt={handleCopyPrompt}
           isGenerating={isGenerating}
+          directApplyMode={directApplyMode}
+          onToggleDirectApply={() => setDirectApplyMode((v) => !v)}
+          canUndoApply={lastApply !== null}
+          onUndoApply={handleUndoApply}
         />
       </div>
 
@@ -1279,6 +1355,10 @@ export const App: React.FC = () => {
         onCopyPrompt={handleCopyPrompt}
         isGenerating={isGenerating}
         llmProvider={config.llmProvider}
+        directApplyMode={directApplyMode}
+        onToggleDirectApply={() => setDirectApplyMode((v) => !v)}
+        canUndoApply={lastApply !== null}
+        onUndoApply={handleUndoApply}
       />
 
       {/* Monaco Diff Modal */}

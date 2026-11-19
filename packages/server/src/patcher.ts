@@ -23,6 +23,23 @@ export interface PatchResult {
   error?: string;
 }
 
+export interface RestoreRequest {
+  filePath: string;
+  /**
+   * Optional project root for the same write sandbox as applyPatch. When
+   * provided (non-empty), a target resolving outside it is refused before
+   * any filesystem access.
+   */
+  projectRoot?: string;
+}
+
+export interface RestoreResult {
+  success: boolean;
+  filePath: string;
+  restored: boolean;
+  error?: string;
+}
+
 /**
  * Normalizes a path for containment comparison: absolute, separators
  * normalized, and lowercased on Windows where drive/path comparison is
@@ -150,6 +167,57 @@ export class FilePatcher {
         success: false,
         filePath: req.filePath,
         unifiedDiff: '',
+        error: err.message || String(err)
+      };
+    }
+  }
+
+  /**
+   * Restores the pre-apply content of a previously patched file from its
+   * per-file backup (<file>.mobile-layout.bak) and removes the backup.
+   * Powers the undo affordance for both the reviewed and direct apply flows.
+   */
+  public static restoreBackup(req: RestoreRequest): RestoreResult {
+    try {
+      if (req.projectRoot) {
+        if (!isPathWithinProject(req.projectRoot, req.filePath)) {
+          return {
+            success: false,
+            filePath: req.filePath,
+            restored: false,
+            error: `Refusing to restore backup: "${req.filePath}" resolves outside the project root "${path.resolve(req.projectRoot)}". No file was written.`
+          };
+        }
+      }
+
+      const backupPath = `${req.filePath}.mobile-layout.bak`;
+      if (!fs.existsSync(backupPath)) {
+        return {
+          success: false,
+          filePath: req.filePath,
+          restored: false,
+          error: `No backup found next to ${req.filePath}. Undo only covers the most recent apply of each file.`
+        };
+      }
+      if (!fs.existsSync(req.filePath)) {
+        return {
+          success: false,
+          filePath: req.filePath,
+          restored: false,
+          error: `Cannot restore: target file no longer exists: ${req.filePath}`
+        };
+      }
+
+      const backupContent = fs.readFileSync(backupPath, 'utf-8');
+      fs.writeFileSync(req.filePath, backupContent, 'utf-8');
+      fs.unlinkSync(backupPath);
+
+      return { success: true, filePath: req.filePath, restored: true };
+    } catch (err: any) {
+      return {
+        success: false,
+        filePath: req.filePath,
+        restored: false,
         error: err.message || String(err)
       };
     }

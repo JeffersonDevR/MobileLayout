@@ -64,7 +64,9 @@ T4 | S3 | delegated writer C (parallel) | patcher path sandbox + per-file backup
      item 2 (security)
 T5 | S2 | inline after T3+T4 | direct-apply generate→apply chain + undo toast + structural
      prompt-field bounds/sanitization (risk-lens advisory) + Revert-All preview cleanup
-     (`App.tsx`, `ReactiveChangesDock.tsx`, `StagingDrawer.tsx`, `prompt.ts`) | commit: pending
+     (`App.tsx`, `ReactiveChangesDock.tsx`, `StagingDrawer.tsx`, `prompt.ts`, `patcher.ts`,
+     `routes.ts`) | done — RED (3+3) -> GREEN (17/17 + 9/9), all suites green, builds PASS;
+     commit: this slice
 T6 | S1,S2 | inline | README/docs + full-suite seam check + close | commit: pending
 T7 | follow-up | inline | review-advisory test hardening: pin the stdio MCP schema copy,
      system-prompt structural guideline + renumbered output guideline, reorder fallback
@@ -224,3 +226,48 @@ the schema test pins the SERVER copy only, the stdio copy was edit-confirmed unt
 test. A duplicate late risk-lens capture arrived after the burn and was discarded without
 action (target already acknowledged; its content also repeated the already-disproved
 single-backup premise from L3).
+L11 (2026-11-19, T4 independent verification + review state): gentle-ai-verify over
+629da52..deec6d2 returned NO blockers: surface conformity (exactly the 4 declared paths),
+all unit checks re-run PASS, 14/14 adversarial containment probes PASS (mixed separators,
+uppercase root + trailing sep, drive-root same/cross-drive, ..-segments resolving inside,
+dotdot-prefixed filenames, refusal-before-fs on nonexistent outside targets, no stray .bak on
+refusal, root-itself EISDIR-safe, relative-cwd escape, ''-root legacy), fixture byte-identical
+before/after, git status unchanged. Advisories recorded (not blocking): lexical-only containment
+(symlinks/junctions unresolved — requires pre-existing fs write access to exploit; future
+hardening candidate), ''-root pinning gap (NOW pinned by the appended probe), and the
+pre-existing client-settable project root via POST /api/project (narrowed, not introduced, by
+T4). The verifier's 9 durable probes were appended verbatim to tests/patcher-safety.test.ts and
+pass GREEN against current code; the verifier's scratch dir was removed by the parent. T4
+native review: consent GRANTED (user); the risk-lens relay was refused instantly (delayed-path
+pattern) and remains pending; the reliability lens arrived via the delayed path and was
+CAPTURED (admission completed) — 3 WARNING + 4 SUGGESTION, none blocking (lexical symlink,
+caller-wiring unproven at route level, empty-root fail-open [now pinned by probe], cross-drive
+[now pinned by probe], fixture-precondition, shared-fixture-mutation, refusal-no-bak [now
+pinned by probe]). Reduction awaits the risk lens.
+L12 (2026-11-19, T5 evidence, inline): RED observed (tests/patcher-safety.test.ts: 3
+restoreBackup failures — function absent; tests/structural-changes.test.ts: 3 sanitization
+failures — raw \r and uncapped length passed through; runs recorded). Implemented:
+(a) FilePatcher.restoreBackup (RestoreRequest/RestoreResult) — same projectRoot containment,
+restores <file>.mobile-layout.bak over the target and deletes the backup, fails cleanly when
+absent; (b) routes.ts POST /api/undo-apply — html/scss restore through FilePatcher with the
+configured project path (sandboxed like apply-patch); (c) prompt.ts sanitizePromptText —
+strips C0/DEL control chars (newline-injection neutralized) and caps fields at 200 chars,
+applied in formatChangeLine, structuralInstruction, and the clipboard map; (d) App.tsx —
+directApplyMode (default false) + lastApply state; applyToDisk refactor shared by the reviewed
+DiffModal flow and the new direct branch of handleGenerateWithLLM (falls back to the diff review
+with a toast when the generation returns no file content); handleUndoApply posts /api/undo-apply
+and mirrors the apply post-steps; handleClearAllChanges now removes staged preview clones
+(MOBILE_LAYOUT_REMOVE_INSERTED per previewId for insert/duplicate) before resetting styles;
+(e) StagingDrawer — "Direct apply (skip diff review)" toggle + "Undo Last Apply" button +
+mode-aware generate label; ReactiveChangesDock — compact "Direct" toggle + "Undo" button +
+mode-aware label, and the dock stays mounted while canUndoApply so undo remains reachable after
+staged changes are cleared. GREEN: tests/patcher-safety.test.ts 17/17 (5 original + 9
+adversarial probes + 3 restore), tests/structural-changes.test.ts 9/9 (6 original + 3
+sanitization), server build PASS, studio build PASS (1612 modules, baseline parity),
+regressions run-tests.ts 7/7, opencode.test.ts 6/6, mcp-generate-patch.test.ts 5/5 (this also
+closes the T1 regression-record-gap advisory: the touched MCP handler surface is now evidenced
+post-change). TDD exception: studio UI has no React test runner — structural readback of all
+changed handlers and render wiring (grep + region reads recorded). Risk: item 2 — the new
+/api/undo-apply is a client-reachable write path; it routes through the same FilePatcher
+containment (projectRoot from server state) and its refusal behavior is pinned by the restore
+tests; everything else in the unit reuses sandboxed primitives.

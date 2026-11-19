@@ -466,6 +466,49 @@ export function createApiRouter(proxyManager: DevProxyManager, state: AppState):
     });
   });
 
+  // Undo the most recent apply: restore the per-file backups written by apply-patch
+  router.post('/undo-apply', (req: Request, res: Response) => {
+    const { htmlFilePath, scssFilePath } = req.body;
+
+    const results: any = {};
+    if (htmlFilePath) {
+      results.html = FilePatcher.restoreBackup({
+        filePath: htmlFilePath,
+        projectRoot: state.projectPath
+      });
+    }
+    if (scssFilePath) {
+      results.scss = FilePatcher.restoreBackup({
+        filePath: scssFilePath,
+        projectRoot: state.projectPath
+      });
+    }
+
+    if (!results.html && !results.scss) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nothing to undo: no file paths provided.'
+      });
+    }
+
+    const hasErrors =
+      (results.html && !results.html.success) || (results.scss && !results.scss.success);
+
+    if (hasErrors) {
+      return res.status(500).json({
+        success: false,
+        results,
+        error: results.html?.error || results.scss?.error || 'Failed to undo apply'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Pre-apply backups restored to project files.',
+      results
+    });
+  });
+
   // Canvas State synchronization endpoints
   router.get('/canvas-state', (req: Request, res: Response) => {
     res.json(mcpHub.getCanvasState());
