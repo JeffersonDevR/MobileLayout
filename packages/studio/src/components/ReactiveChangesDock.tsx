@@ -10,6 +10,7 @@ import {
   Check, 
   Copy, 
   ArrowRight,
+  ArrowUpDown,
   Layers,
   Wand2
 } from 'lucide-react';
@@ -24,6 +25,21 @@ interface ReactiveChangesDockProps {
   onCopyPrompt: () => void;
   isGenerating: boolean;
 }
+
+// Presentation metadata for structural change types; existing types keep
+// their original chips and no icon.
+const STRUCTURAL_CHANGE_META: Partial<
+  Record<UIChangeItem['type'], { icon: JSX.Element; chipClass: string }>
+> = {
+  reorder: {
+    icon: <ArrowUpDown className="w-2.5 h-2.5" />,
+    chipClass: 'bg-violet-500/20 text-violet-300'
+  },
+  duplicate: {
+    icon: <Copy className="w-2.5 h-2.5" />,
+    chipClass: 'bg-cyan-500/20 text-cyan-300'
+  }
+};
 
 export const ReactiveChangesDock: React.FC<ReactiveChangesDockProps> = ({
   stagedChanges,
@@ -79,20 +95,24 @@ export const ReactiveChangesDock: React.FC<ReactiveChangesDockProps> = ({
           <div className="p-3 space-y-2.5">
             {/* Horizontal scrollable changes list */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-              {stagedChanges.map((change, idx) => (
+              {stagedChanges.map((change, idx) => {
+                const structural = STRUCTURAL_CHANGE_META[change.type];
+                const chipClass = structural
+                  ? `inline-flex items-center gap-0.5 ${structural.chipClass}`
+                  : change.type === 'style'
+                  ? 'bg-blue-500/20 text-blue-300'
+                  : change.type === 'attribute'
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : change.type === 'insert'
+                  ? 'bg-emerald-500/20 text-emerald-300'
+                  : 'bg-rose-500/20 text-rose-300';
+                return (
                 <div
                   key={idx}
                   className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] shrink-0 hover:border-slate-700 transition-all"
                 >
-                  <span className={`text-[9px] uppercase font-mono font-bold px-1 rounded ${
-                    change.type === 'style'
-                      ? 'bg-blue-500/20 text-blue-300'
-                      : change.type === 'attribute'
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : change.type === 'insert'
-                      ? 'bg-emerald-500/20 text-emerald-300'
-                      : 'bg-rose-500/20 text-rose-300'
-                  }`}>
+                  <span className={`text-[9px] uppercase font-mono font-bold px-1 rounded ${chipClass}`}>
+                    {structural?.icon}
                     {change.type}
                   </span>
                   <span className="font-semibold text-slate-300">{change.name}</span>
@@ -109,7 +129,8 @@ export const ReactiveChangesDock: React.FC<ReactiveChangesDockProps> = ({
                     <X className="w-3 h-3" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Bottom Actions */}

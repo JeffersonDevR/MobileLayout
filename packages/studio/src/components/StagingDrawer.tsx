@@ -10,6 +10,7 @@ import {
   AlertCircle,
   Loader2,
   Send,
+  ArrowUpDown,
   Layers
 } from 'lucide-react';
 
@@ -28,6 +29,21 @@ interface StagingDrawerProps {
   isGenerating: boolean;
   llmProvider: 'gemini' | 'opencode';
 }
+
+// Presentation metadata for structural change types; existing types keep
+// their original chips and no icon.
+const STRUCTURAL_CHANGE_META: Partial<
+  Record<UIChangeItem['type'], { icon: JSX.Element; chipClass: string }>
+> = {
+  reorder: {
+    icon: <ArrowUpDown className="w-3 h-3" />,
+    chipClass: 'bg-violet-500/20 text-violet-300'
+  },
+  duplicate: {
+    icon: <Copy className="w-3 h-3" />,
+    chipClass: 'bg-cyan-500/20 text-cyan-300'
+  }
+};
 
 export const StagingDrawer: React.FC<StagingDrawerProps> = ({
   isOpen,
@@ -123,13 +139,22 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
             No visual changes recorded yet. Click an element and tweak styles or attributes in the Inspector panel!
           </div>
         ) : (
-          stagedChanges.map((change, idx) => (
+          stagedChanges.map((change, idx) => {
+            const structural = STRUCTURAL_CHANGE_META[change.type];
+            return (
             <div
               key={idx}
               className="flex items-center justify-between p-2.5 rounded-lg border border-slate-800 bg-slate-800/40 text-xs"
             >
               <div className="truncate mr-2">
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-700 text-slate-300 mr-1.5">
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider mr-1.5 ${
+                    structural
+                      ? `inline-flex items-center gap-1 ${structural.chipClass}`
+                      : 'bg-slate-700 text-slate-300'
+                  }`}
+                >
+                  {structural?.icon}
                   {change.type}
                 </span>
                 <span className="font-mono text-purple-300">{change.name}</span>
@@ -144,7 +169,8 @@ export const StagingDrawer: React.FC<StagingDrawerProps> = ({
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-          ))
+            );
+          })
         )}
 
         {/* User Prompt & Intent */}

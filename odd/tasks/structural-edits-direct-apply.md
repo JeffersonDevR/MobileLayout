@@ -56,12 +56,20 @@ T2 | S1 | delegated writer A (parallel) | bridge duplicate op + selectorPath/rel
      structural payloads (`packages/bridge/src/inspector.ts`) | done — build PASS (parent
      spot-check re-run), +100/-20 in one file; commit: this slice
 T3 | S1 | delegated writer B (parallel) | studio staging typed structural changes + duplicate
-     message handler + revert + dock/drawer labels (`App.tsx`, `components/*`) | commit: pending
+     message handler + revert + dock/drawer labels (`App.tsx`, `components/*`) | done — build
+     PASS (1612 modules, baseline parity), zero reconciliation changes needed; commit: this slice
 T4 | S3 | delegated writer C (parallel) | patcher path sandbox + per-file backup
-     (`patcher.ts`, `tests/patcher-safety.test.ts`) | commit: pending — Risk: item 2
-T5 | S2 | inline after T3+T4 | direct-apply generate→apply chain + undo toast (`App.tsx`,
-     `ReactiveChangesDock.tsx`, `StagingDrawer.tsx`) | commit: pending
+     (`patcher.ts`, `tests/patcher-safety.test.ts`) | done — RED (3 refusal failures) -> GREEN
+     (5/5), suites 7/7 + 6/6 + 5/5, parent spot-check re-run PASS; commit: this slice — Risk:
+     item 2 (security)
+T5 | S2 | inline after T3+T4 | direct-apply generate→apply chain + undo toast + structural
+     prompt-field bounds/sanitization (risk-lens advisory) + Revert-All preview cleanup
+     (`App.tsx`, `ReactiveChangesDock.tsx`, `StagingDrawer.tsx`, `prompt.ts`) | commit: pending
 T6 | S1,S2 | inline | README/docs + full-suite seam check + close | commit: pending
+T7 | follow-up | inline | review-advisory test hardening: pin the stdio MCP schema copy,
+     system-prompt structural guideline + renumbered output guideline, reorder fallback
+     behavior, and clipboard duplicate/remove branches; correct the L5 pinning overstatement;
+     record post-change opencode/mcp suite results in the log | commit: pending
 
 Route declaration: T1 inline (one understood change across contract copies; no writer reason).
 T2/T3/T4 parallel writers (three independent units with disjoint edit surfaces launched together
@@ -165,3 +173,54 @@ relativeTo into UIChangeItem.relativeTo. Risk: item 3 — the shared-helper extr
 code paths existing behavior also uses (ELEMENT_SELECTED extraction, screen audit); verified
 behavior-preserving by writer readback (identical selectorPath join; getSelector delegation
 preserves all call-site outputs) and the parent build spot-check.
+L8 (2026-11-19, T3 evidence, delegated writer B): studio side implemented in App.tsx,
+ReactiveChangesDock.tsx, StagingDrawer.tsx: reorder retyped `style` -> `reorder` with the
+structured payload (selector, selectorPath, relativeToSelector||relativeTo, direction —
+App.tsx:218-226); new MOBILE_LAYOUT_ELEMENT_DUPLICATED case (App.tsx:232-239); remove staging
+enriched with selectorPath (App.tsx:210); revert: duplicate removes the canvas clone via the
+EXISTING MOBILE_LAYOUT_REMOVE_INSERTED channel (App.tsx:527, insert precedent :505) and reorder
+is unstage-only BY DESIGN (bridge moveElement echoes a fresh REORDERED per move, so an inverse
+move would restage the change it removed — documented in an App.tsx comment; the toast honestly
+says the canvas keeps its preview position); dock/drawer render reorder/duplicate with icon chips.
+Reconciliation update required ZERO changes — writer B had independently used the existing
+channel and the frozen shapes. TDD exception: no React test runner in the repo; structural
+readback is the functional check. Writer verification: npm.cmd run build
+--workspace=@mobile-layout/studio PASS (tsc clean + vite build, 1612 modules = T1 baseline
+count). Flags for the parent (accepted into T5 scope): handleClearAllChanges ("Revert All") does
+not remove inserted previews or duplicate clones (pre-existing gap for insert, now also
+duplicate); duplicate without previewId falls back to unstage-only revert.
+L9 (2026-11-19, T4 evidence, delegated writer C): FilePatcher.applyPatch gains optional
+`projectRoot` (self-contained containment: normalizeForComparison + isPathWithinProject —
+resolve both sides, lowercase on win32, path.relative segment-boundary check that also refuses
+cross-drive absolutes and sibling-prefix roots); both write call sites pass the configured root
+(routes.ts /api/apply-patch, mcp-handler.ts apply_source_patch — each handler's ONLY change);
+refusals return { success: false, error } before any fs access. Finding vs the map: the
+"single shared .mobile-layout.bak" premise in L3 was WRONG — patcher.ts:70 has written
+`${filePath}.mobile-layout.bak` (per-file, = `<originalFileName>.mobile-layout.bak`) since
+bootstrap; the end-state name was already satisfied, so behavior was kept, documented, and
+pinned by tests instead of renamed. RED observed: 3 refusal tests failed against the old code
+(victims overwritten); GREEN: tests/patcher-safety.test.ts 5/5 (in-root apply + per-file backup
+name/content, ../ traversal, absolute-outside, sibling-prefix, legacy no-root behavior);
+regression run-tests.ts 7/7, opencode.test.ts 6/6, mcp-generate-patch.test.ts 5/5; server build
+PASS. Parent spot-check: npx.cmd tsx tests/patcher-safety.test.ts re-run 5/5 PASS (~26 ms).
+Deliberate degradation (accepted, documented): an empty/unset configured project path passes ''
+which the patcher treats as omitted -> legacy unsandboxed behavior; this is the pre-existing
+exposure for unconfigured servers, unchanged by this unit, while every configured project
+(including all direct-apply flows) now gets the sandbox. Risk: item 2 (security — guards on
+client-reachable write paths). Backup naming note for T5: undo restores via the returned
+backupPath, so the exact backup name is an implementation detail to T5.
+L10 (2026-11-19, T1 native review outcome): both frozen lens captures were eventually admitted
+(the OpenCode relay refused the direct Task launches but the reviewer results arrived via a
+delayed transport path; the unachievable declarations were withdrawn first, then each result was
+captured with `review capture-result --input`). Native reduction: APPROVED — every finding
+advisory/informational, none opened a correction. The exact acknowledgement burned the authority
+(gentle-ai.review-acknowledged/v1, consumed_revision sha256:ca3f89b6..., lineage
+review-c0f5770559673fc9). Advisory follow-ups recorded as task T7 plus T5's sanitization scope:
+pin the stdio schema copy / system-prompt guideline / reorder fallbacks / clipboard
+duplicate+remove (R3 findings); bound or sanitize structural prompt fields before direct-apply
+(R1-prompt-injection-widening); run+record the post-change opencode/mcp suites for the T1 record
+(R3-regression-record-gap); L5's "tests pinning rendering + schema" overstated the pinning —
+the schema test pins the SERVER copy only, the stdio copy was edit-confirmed until T7 lands its
+test. A duplicate late risk-lens capture arrived after the burn and was discarded without
+action (target already acknowledged; its content also repeated the already-disproved
+single-backup premise from L3).

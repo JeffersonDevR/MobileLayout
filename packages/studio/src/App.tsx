@@ -206,7 +206,8 @@ export const App: React.FC = () => {
               type: 'remove',
               name: `<${data.payload.tagName}>`,
               value: data.payload.selector || data.payload.tagName,
-              selector: data.payload.selector
+              selector: data.payload.selector,
+              selectorPath: data.payload.selectorPath
             };
             setStagedChanges((prev) => [...prev, removeChange]);
             showToast(`Removed <${data.payload.tagName}> from canvas (staged for deletion).`, 'info');
@@ -215,12 +216,29 @@ export const App: React.FC = () => {
 
         case 'MOBILE_LAYOUT_ELEMENT_REORDERED':
           const reorderChange: UIChangeItem = {
-            type: 'style',
+            type: 'reorder',
             name: `Reorder <${data.payload.tagName}>`,
-            value: `Moved ${data.payload.direction} relative to ${data.payload.relativeTo}`
+            value: `Moved ${data.payload.direction} relative to ${data.payload.relativeTo}`,
+            selector: data.payload.selector,
+            selectorPath: data.payload.selectorPath,
+            relativeTo: data.payload.relativeToSelector || data.payload.relativeTo,
+            direction: data.payload.direction
           };
           setStagedChanges((prev) => [...prev, reorderChange]);
           showToast(`Moved <${data.payload.tagName}> ${data.payload.direction} in canvas.`, 'success');
+          break;
+
+        case 'MOBILE_LAYOUT_ELEMENT_DUPLICATED':
+          const duplicateChange: UIChangeItem = {
+            type: 'duplicate',
+            name: `Duplicate <${data.payload.tagName}>`,
+            value: 'Duplicate the element',
+            selector: data.payload.selector,
+            selectorPath: data.payload.selectorPath,
+            previewId: data.payload.previewId
+          };
+          setStagedChanges((prev) => [...prev, duplicateChange]);
+          showToast(`Duplicated <${data.payload.tagName}> on canvas (staged).`, 'success');
           break;
 
         case 'MOBILE_LAYOUT_TEXT_UPDATED':
@@ -502,10 +520,25 @@ export const App: React.FC = () => {
     } else if (change.type === 'remove') {
       // Unhide element in live canvas
       postToIframe('MOBILE_LAYOUT_UNHIDE_ELEMENT', { selector: change.selector });
+    } else if (change.type === 'duplicate') {
+      // Remove the live clone through the same preview-removal mechanism the
+      // insert revert uses (bridge removes the [data-preview-id] element).
+      if (change.previewId) {
+        postToIframe('MOBILE_LAYOUT_REMOVE_INSERTED', { previewId: change.previewId });
+      }
+    } else if (change.type === 'reorder') {
+      // The bridge exposes no inbound message that restores DOM order without
+      // echoing a fresh MOBILE_LAYOUT_ELEMENT_REORDERED event (which would
+      // restage the change being removed here), so a reorder revert only
+      // drops the staged instruction; the canvas keeps its preview position.
     }
 
     setStagedChanges((prev) => prev.filter((_, i) => i !== idx));
-    showToast(`Reverted "${change.name}" on canvas.`, 'info');
+    if (change.type === 'reorder') {
+      showToast(`Removed staged reorder "${change.name}" (canvas keeps its preview position).`, 'info');
+    } else {
+      showToast(`Reverted "${change.name}" on canvas.`, 'info');
+    }
   };
 
   // Revert all visual changes and restore original canvas
