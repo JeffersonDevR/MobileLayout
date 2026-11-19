@@ -433,7 +433,8 @@ export function createApiRouter(proxyManager: DevProxyManager, state: AppState):
     if (htmlFilePath && updatedHtmlContent !== undefined) {
       const htmlResult = FilePatcher.applyPatch({
         filePath: htmlFilePath,
-        fullNewContent: updatedHtmlContent
+        fullNewContent: updatedHtmlContent,
+        projectRoot: state.projectPath
       });
       results.html = htmlResult;
     }
@@ -441,7 +442,8 @@ export function createApiRouter(proxyManager: DevProxyManager, state: AppState):
     if (scssFilePath && updatedScssContent !== undefined) {
       const scssResult = FilePatcher.applyPatch({
         filePath: scssFilePath,
-        fullNewContent: updatedScssContent
+        fullNewContent: updatedScssContent,
+        projectRoot: state.projectPath
       });
       results.scss = scssResult;
     }

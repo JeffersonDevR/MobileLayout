@@ -524,14 +524,16 @@ export async function handleMcpToolCall(
         if (htmlFilePath && updatedHtmlContent !== undefined) {
           results.html = FilePatcher.applyPatch({
             filePath: htmlFilePath,
-            fullNewContent: updatedHtmlContent
+            fullNewContent: updatedHtmlContent,
+            projectRoot: projectPath
           });
         }
 
         if (scssFilePath && updatedScssContent !== undefined) {
           results.scss = FilePatcher.applyPatch({
             filePath: scssFilePath,
-            fullNewContent: updatedScssContent
+            fullNewContent: updatedScssContent,
+            projectRoot: projectPath
           });
         }
 
