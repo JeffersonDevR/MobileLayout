@@ -10,6 +10,7 @@ import {
   Check, 
   Copy, 
   ArrowRight,
+  ArrowUpDown,
   Layers,
   Wand2
 } from 'lucide-react';
@@ -23,7 +24,28 @@ interface ReactiveChangesDockProps {
   onGenerateWithLLM: () => void;
   onCopyPrompt: () => void;
   isGenerating: boolean;
+  /** Direct-apply mode: skip the Monaco review and write generated changes straight to disk. */
+  directApplyMode: boolean;
+  onToggleDirectApply: () => void;
+  /** True while a recent apply's backups can still be restored. */
+  canUndoApply: boolean;
+  onUndoApply: () => void;
 }
+
+// Presentation metadata for structural change types; existing types keep
+// their original chips and no icon.
+const STRUCTURAL_CHANGE_META: Partial<
+  Record<UIChangeItem['type'], { icon: JSX.Element; chipClass: string }>
+> = {
+  reorder: {
+    icon: <ArrowUpDown className="w-2.5 h-2.5" />,
+    chipClass: 'bg-violet-500/20 text-violet-300'
+  },
+  duplicate: {
+    icon: <Copy className="w-2.5 h-2.5" />,
+    chipClass: 'bg-cyan-500/20 text-cyan-300'
+  }
+};
 
 export const ReactiveChangesDock: React.FC<ReactiveChangesDockProps> = ({
   stagedChanges,
@@ -33,11 +55,17 @@ export const ReactiveChangesDock: React.FC<ReactiveChangesDockProps> = ({
   onOpenStaging,
   onGenerateWithLLM,
   onCopyPrompt,
-  isGenerating
+  isGenerating,
+  directApplyMode,
+  onToggleDirectApply,
+  canUndoApply,
+  onUndoApply
 }) => {
   const [isMinimized, setIsMinimized] = useState(false);
 
-  if (stagedChanges.length === 0) return null;
+  // Keep the dock mounted after an apply so the undo affordance stays
+  // reachable even when the staged-changes list is now empty.
+  if (stagedChanges.length === 0 && !canUndoApply) return null;
 
   return (
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-full px-4 animate-in slide-in-from-bottom-4 duration-200">
@@ -79,20 +107,24 @@ export const ReactiveChangesDock: React.FC<ReactiveChangesDockProps> = ({
           <div className="p-3 space-y-2.5">
             {/* Horizontal scrollable changes list */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-              {stagedChanges.map((change, idx) => (
+              {stagedChanges.map((change, idx) => {
+                const structural = STRUCTURAL_CHANGE_META[change.type];
+                const chipClass = structural
+                  ? `inline-flex items-center gap-0.5 ${structural.chipClass}`
+                  : change.type === 'style'
+                  ? 'bg-blue-500/20 text-blue-300'
+                  : change.type === 'attribute'
+                  ? 'bg-amber-500/20 text-amber-300'
+                  : change.type === 'insert'
+                  ? 'bg-emerald-500/20 text-emerald-300'
+                  : 'bg-rose-500/20 text-rose-300';
+                return (
                 <div
                   key={idx}
                   className="flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] shrink-0 hover:border-slate-700 transition-all"
                 >
-                  <span className={`text-[9px] uppercase font-mono font-bold px-1 rounded ${
-                    change.type === 'style'
-                      ? 'bg-blue-500/20 text-blue-300'
-                      : change.type === 'attribute'
-                      ? 'bg-amber-500/20 text-amber-300'
-                      : change.type === 'insert'
-                      ? 'bg-emerald-500/20 text-emerald-300'
-                      : 'bg-rose-500/20 text-rose-300'
-                  }`}>
+                  <span className={`text-[9px] uppercase font-mono font-bold px-1 rounded ${chipClass}`}>
+                    {structural?.icon}
                     {change.type}
                   </span>
                   <span className="font-semibold text-slate-300">{change.name}</span>
@@ -109,20 +141,53 @@ export const ReactiveChangesDock: React.FC<ReactiveChangesDockProps> = ({
                     <X className="w-3 h-3" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Bottom Actions */}
             <div className="flex items-center justify-between pt-1 text-xs">
-              <button
-                onClick={onClearAllChanges}
-                className="text-[11px] text-slate-400 hover:text-rose-400 transition-colors flex items-center space-x-1"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Revert All</span>
-              </button>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={onClearAllChanges}
+                  className="text-[11px] text-slate-400 hover:text-rose-400 transition-colors flex items-center space-x-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Revert All</span>
+                </button>
+                <label
+                  className="flex items-center gap-1 cursor-pointer select-none"
+                  title="Direct apply: skip the diff review and write generated changes straight to disk"
+                >
+                  <input
+                    type="checkbox"
+                    checked={directApplyMode}
+                    onChange={onToggleDirectApply}
+                    className="accent-purple-500 w-3 h-3 cursor-pointer"
+                  />
+                  <span
+                    className={
+                      directApplyMode
+                        ? 'text-purple-300 font-semibold text-[11px]'
+                        : 'text-slate-500 text-[11px]'
+                    }
+                  >
+                    Direct
+                  </span>
+                </label>
+              </div>
 
               <div className="flex items-center space-x-2">
+                {canUndoApply && (
+                  <button
+                    onClick={onUndoApply}
+                    className="px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 text-xs font-medium flex items-center space-x-1 transition-all"
+                    title="Restore the pre-apply backups of the last applied change"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Undo</span>
+                  </button>
+                )}
                 <button
                   onClick={onCopyPrompt}
                   className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium flex items-center space-x-1 transition-all"
@@ -138,7 +203,7 @@ export const ReactiveChangesDock: React.FC<ReactiveChangesDockProps> = ({
                   className="px-3 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium text-xs flex items-center space-x-1.5 shadow-md shadow-purple-500/20 transition-all disabled:opacity-50"
                 >
                   <Wand2 className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
-                  <span>{isGenerating ? 'Writing Code...' : 'Apply with LLM'}</span>
+                  <span>{isGenerating ? 'Writing Code...' : directApplyMode ? 'Apply Directly' : 'Apply with LLM'}</span>
                   <ArrowRight className="w-3 h-3" />
                 </button>
               </div>

@@ -111,12 +111,18 @@ export interface TargetGitInfo {
 
 export interface UIChangeItem {
   id?: string;
-  type: 'style' | 'attribute' | 'class' | 'insert' | 'remove';
+  type: 'style' | 'attribute' | 'class' | 'insert' | 'remove' | 'reorder' | 'duplicate';
   name: string;
   value: string;
   previousValue?: string;
   previewId?: string;
   selector?: string;
+  /** Structural ops (reorder/duplicate/remove): selector path from the canvas root. */
+  selectorPath?: string;
+  /** reorder: the sibling element (selector or tag) the element moves relative to. */
+  relativeTo?: string;
+  /** reorder: movement direction relative to the sibling. */
+  direction?: 'up' | 'down';
 }
 
 export interface MatchedSource {

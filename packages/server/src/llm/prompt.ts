@@ -1,8 +1,15 @@
 export interface UIChangeItem {
-  type: 'style' | 'attribute' | 'class' | 'insert' | 'remove';
+  type: 'style' | 'attribute' | 'class' | 'insert' | 'remove' | 'reorder' | 'duplicate';
   name: string;
   value: string;
   previousValue?: string;
+  selector?: string;
+  /** Structural ops: selector path from the canvas root for unambiguous targeting. */
+  selectorPath?: string;
+  /** reorder: the sibling element (selector or tag) the element moves relative to. */
+  relativeTo?: string;
+  /** reorder: movement direction relative to the sibling. */
+  direction?: 'up' | 'down';
 }
 
 export interface SelectedComponentItem {
@@ -56,7 +63,8 @@ CRITICAL GUIDELINES:
    - For custom styling of Ionic components, prefer Ionic CSS custom properties (e.g. --background, --color, --border-radius, --padding-start) inside the .scss file rather than inline styles.
    - For regular layout spacing, use clean CSS / SCSS classes or Ionic utility classes.
 3. Keep changes surgical: only change what is required to achieve the visual design and user intent.
-4. Output your response ONLY as a strict JSON object with this exact schema:
+4. STRUCTURAL CHANGES: when the change list contains [REORDER], [DUPLICATE], or [REMOVE] entries, perform exactly that structural edit on the element identified by its target selector (move it BEFORE/AFTER the named sibling, insert an identical copy directly after it, or remove it entirely), preserving every Angular binding and structural directive on the affected elements.
+5. Output your response ONLY as a strict JSON object with this exact schema:
 {
   "explanation": "Brief explanation of the changes made",
   "updatedHtmlContent": "The entire updated content of the .html file",
@@ -65,10 +73,59 @@ CRITICAL GUIDELINES:
 Do not wrap the JSON in extra markdown fences or explanations outside the JSON object.`;
   }
 
+  /**
+   * Neutralizes prompt-structure smuggling in free-text fields rendered
+   * into LLM prompts: strips control characters (C0/DEL/C1, Unicode line
+   * and paragraph separators, zero-width and bidi characters) and caps the
+   * length so one staged change cannot dominate the prompt.
+   */
+  private static sanitizePromptText(value: unknown, maxLength = 200): string {
+    const flat = String(value ?? '')
+      .replace(/[\u0000-\u001F\u007F\u0080-\u009F\u2028\u2029\u200B-\u200F\u202A-\u202E\uFEFF]/g, ' ')
+      .trim();
+    return flat.length > maxLength ? flat.slice(0, maxLength) : flat;
+  }
+
+  /**
+   * Renders one staged change as an explicit instruction line. Structural edits
+   * (reorder/duplicate/remove) read as unambiguous commands for the LLM instead
+   * of the generic "previous -> new" property format.
+   */
+  private static formatChangeLine(c: UIChangeItem): string {
+    // Targeting fields carry deep canvas hierarchies: generous cap.
+    const target = PromptBuilder.sanitizePromptText(c.selectorPath || c.selector || c.name, 1000);
+    const structural = PromptBuilder.structuralInstruction(c);
+    if (structural) {
+      return `- [${c.type.toUpperCase()}] ${PromptBuilder.sanitizePromptText(c.name)} (target: ${target}): ${structural}`;
+    }
+    // Baseline format preserved: the '(none)' marker for absent previous
+    // values, and a generous cap so long baseline-valid content (text
+    // updates) is not silently truncated.
+    return `- [${c.type.toUpperCase()}] ${PromptBuilder.sanitizePromptText(c.name)}: "${PromptBuilder.sanitizePromptText(c.previousValue, 2000) || '(none)'}" -> "${PromptBuilder.sanitizePromptText(c.value, 2000)}"`;
+  }
+
+  /**
+   * Explicit instruction text for structural change types; null for
+   * property-style changes, which keep the generic format.
+   */
+  private static structuralInstruction(c: UIChangeItem): string | null {
+    switch (c.type) {
+      case 'reorder': {
+        const rawSibling = c.relativeTo || c.value || 'the adjacent element';
+        const sibling = PromptBuilder.sanitizePromptText(rawSibling, 1000) || 'the adjacent element';
+        return `move this exact element ${c.direction === 'down' ? 'AFTER' : 'BEFORE'} its sibling ${sibling}. Preserve all Angular bindings and structural directives on the moved element.`;
+      }
+      case 'duplicate':
+        return 'insert an exact copy of this element immediately after the original. Preserve all Angular bindings and structural directives on the copy.';
+      case 'remove':
+        return 'delete this exact element from the template.';
+      default:
+        return null;
+    }
+  }
+
   public static buildUserPrompt(ctx: PromptContext): string {
-    const changesFormatted = (ctx.visualChanges || [])
-      .map((c) => `- [${c.type.toUpperCase()}] ${c.name}: "${c.previousValue || '(none)'}" -> "${c.value}"`)
-      .join('\n');
+    const changesFormatted = (ctx.visualChanges || []).map((c) => PromptBuilder.formatChangeLine(c)).join('\n');
 
     let prompt = `I made visual design changes / requested fixes to element(s) in my Angular/Ionic project.
 
@@ -146,7 +203,14 @@ ${ctx.fullScssContent || '/* Empty or new scss file */'}
    */
   public static buildClipboardPrompt(ctx: PromptContext): string {
     const changesFormatted = (ctx.visualChanges || [])
-      .map((c) => `- **${c.type}** \`${c.name}\`: \`${c.value}\``)
+      .map((c) => {
+        const target = PromptBuilder.sanitizePromptText(c.selectorPath || c.selector || c.name, 1000);
+        const structural = PromptBuilder.structuralInstruction(c);
+        if (structural) {
+          return `- **${c.type.toUpperCase()}** \`${PromptBuilder.sanitizePromptText(c.name)}\` (target: \`${target}\`): ${structural}`;
+        }
+        return `- **${c.type}** \`${PromptBuilder.sanitizePromptText(c.name)}\`: \`${PromptBuilder.sanitizePromptText(c.value, 2000)}\``;
+      })
       .join('\n');
 
     let prompt = `### UI/UX Code Update Request (from MobileLayout Studio)

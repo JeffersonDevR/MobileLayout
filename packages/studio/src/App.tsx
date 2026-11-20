@@ -206,7 +206,8 @@ export const App: React.FC = () => {
               type: 'remove',
               name: `<${data.payload.tagName}>`,
               value: data.payload.selector || data.payload.tagName,
-              selector: data.payload.selector
+              selector: data.payload.selector,
+              selectorPath: data.payload.selectorPath
             };
             setStagedChanges((prev) => [...prev, removeChange]);
             showToast(`Removed <${data.payload.tagName}> from canvas (staged for deletion).`, 'info');
@@ -215,12 +216,29 @@ export const App: React.FC = () => {
 
         case 'MOBILE_LAYOUT_ELEMENT_REORDERED':
           const reorderChange: UIChangeItem = {
-            type: 'style',
+            type: 'reorder',
             name: `Reorder <${data.payload.tagName}>`,
-            value: `Moved ${data.payload.direction} relative to ${data.payload.relativeTo}`
+            value: `Moved ${data.payload.direction} relative to ${data.payload.relativeTo}`,
+            selector: data.payload.selector,
+            selectorPath: data.payload.selectorPath,
+            relativeTo: data.payload.relativeToSelector || data.payload.relativeTo,
+            direction: data.payload.direction
           };
           setStagedChanges((prev) => [...prev, reorderChange]);
           showToast(`Moved <${data.payload.tagName}> ${data.payload.direction} in canvas.`, 'success');
+          break;
+
+        case 'MOBILE_LAYOUT_ELEMENT_DUPLICATED':
+          const duplicateChange: UIChangeItem = {
+            type: 'duplicate',
+            name: `Duplicate <${data.payload.tagName}>`,
+            value: 'Duplicate the element',
+            selector: data.payload.selector,
+            selectorPath: data.payload.selectorPath,
+            previewId: data.payload.previewId
+          };
+          setStagedChanges((prev) => [...prev, duplicateChange]);
+          showToast(`Duplicated <${data.payload.tagName}> on canvas (staged).`, 'success');
           break;
 
         case 'MOBILE_LAYOUT_TEXT_UPDATED':
@@ -502,14 +520,36 @@ export const App: React.FC = () => {
     } else if (change.type === 'remove') {
       // Unhide element in live canvas
       postToIframe('MOBILE_LAYOUT_UNHIDE_ELEMENT', { selector: change.selector });
+    } else if (change.type === 'duplicate') {
+      // Remove the live clone through the same preview-removal mechanism the
+      // insert revert uses (bridge removes the [data-preview-id] element).
+      if (change.previewId) {
+        postToIframe('MOBILE_LAYOUT_REMOVE_INSERTED', { previewId: change.previewId });
+      }
+    } else if (change.type === 'reorder') {
+      // The bridge exposes no inbound message that restores DOM order without
+      // echoing a fresh MOBILE_LAYOUT_ELEMENT_REORDERED event (which would
+      // restage the change being removed here), so a reorder revert only
+      // drops the staged instruction; the canvas keeps its preview position.
     }
 
     setStagedChanges((prev) => prev.filter((_, i) => i !== idx));
-    showToast(`Reverted "${change.name}" on canvas.`, 'info');
+    if (change.type === 'reorder') {
+      showToast(`Removed staged reorder "${change.name}" (canvas keeps its preview position).`, 'info');
+    } else {
+      showToast(`Reverted "${change.name}" on canvas.`, 'info');
+    }
   };
 
   // Revert all visual changes and restore original canvas
   const handleClearAllChanges = () => {
+    // Remove staged preview elements (palette inserts + duplicates) from the
+    // live canvas, not just their styling overrides.
+    stagedChanges.forEach((change) => {
+      if ((change.type === 'insert' || change.type === 'duplicate') && change.previewId) {
+        postToIframe('MOBILE_LAYOUT_REMOVE_INSERTED', { previewId: change.previewId });
+      }
+    });
     postToIframe('MOBILE_LAYOUT_RESET_LIVE_STYLE', {});
     postToIframe('MOBILE_LAYOUT_UNHIDE_ELEMENT', {});
     setStagedChanges([]);
@@ -625,6 +665,22 @@ export const App: React.FC = () => {
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to generate code changes.');
+      }
+
+      // Direct-apply mode: skip the Monaco review and write straight to disk.
+      if (directApplyMode) {
+        if (!data.updatedHtmlContent && !data.updatedScssContent) {
+          showToast('Generation returned no file content; opening the diff review instead.', 'error');
+        } else {
+          const applied = await applyToDisk({
+            htmlFilePath: htmlFile,
+            updatedHtmlContent: data.updatedHtmlContent,
+            scssFilePath: scssFile,
+            updatedScssContent: data.updatedScssContent
+          });
+          if (applied) setIsStagingOpen(false);
+          return;
+        }
       }
 
       setDiffResult({
@@ -1047,21 +1103,25 @@ export const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Apply code changes to files on disk
-  const handleApplyChanges = async () => {
-    if (!diffResult) return;
+  // Direct-apply mode: skip the Monaco review and write generated content
+  // straight to disk (undo restores the per-file backups).
+  const [directApplyMode, setDirectApplyMode] = useState(false);
+  const [lastApply, setLastApply] = useState<{ htmlFilePath?: string; scssFilePath?: string } | null>(null);
 
+  // Write generated content straight to disk via the sandboxed apply endpoint.
+  // Shared by the reviewed apply flow (DiffModal) and the direct-apply mode.
+  const applyToDisk = async (payload: {
+    htmlFilePath: string;
+    updatedHtmlContent?: string;
+    scssFilePath?: string;
+    updatedScssContent?: string;
+  }): Promise<boolean> => {
     setIsApplying(true);
     try {
       const res = await fetch('/api/apply-patch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          htmlFilePath: diffResult.htmlFilePath,
-          updatedHtmlContent: diffResult.updatedHtmlContent,
-          scssFilePath: diffResult.scssFilePath,
-          updatedScssContent: diffResult.updatedScssContent
-        })
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json();
@@ -1069,13 +1129,24 @@ export const App: React.FC = () => {
         throw new Error(data.error || 'Failed to apply changes.');
       }
 
-      showToast('Changes written to disk! Angular HMR is updating...', 'success');
+      showToast('Changes written to disk! HMR updating — Undo available in the Changes panel.', 'success');
       setIsDiffOpen(false);
       setStagedChanges([]);
-      
+      // Record only the paths that were actually patched (content present):
+      // single-file generations must not register the untouched file, or
+      // undo would fail wholesale against a backup that never existed.
+      const patchedHtml = payload.updatedHtmlContent !== undefined;
+      const patchedScss = payload.updatedScssContent !== undefined;
+      if (patchedHtml || patchedScss) {
+        setLastApply({
+          htmlFilePath: patchedHtml ? payload.htmlFilePath : undefined,
+          scssFilePath: patchedScss ? payload.scssFilePath : undefined
+        });
+      }
+
       // Clear live overrides so target app's real HMR code takes over
       postToIframe('MOBILE_LAYOUT_RESET_LIVE_STYLE', {});
-      
+
       // Refresh views and target path checkout info
       fetchViews();
       if (activePathname) handleCheckoutPath(activePathname);
@@ -1084,11 +1155,55 @@ export const App: React.FC = () => {
       setTimeout(() => {
         if (selectedElement) scanElementInProject(selectedElement);
       }, 1000);
+      return true;
     } catch (err: any) {
       showToast(err.message, 'error');
+      return false;
     } finally {
       setIsApplying(false);
     }
+  };
+
+  // Undo the most recent apply by restoring the patcher's per-file backups.
+  const handleUndoApply = async () => {
+    if (!lastApply) return;
+    try {
+      const res = await fetch('/api/undo-apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lastApply)
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to undo the last apply.');
+      }
+
+      showToast('Last apply reverted from backup! Angular HMR is updating...', 'success');
+      setLastApply(null);
+
+      // Clear live overrides so the restored code takes over cleanly
+      postToIframe('MOBILE_LAYOUT_RESET_LIVE_STYLE', {});
+      fetchViews();
+      if (activePathname) handleCheckoutPath(activePathname);
+      setTimeout(() => {
+        if (selectedElement) scanElementInProject(selectedElement);
+      }, 1000);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  // Apply code changes (reviewed in the Monaco diff) to files on disk
+  const handleApplyChanges = async () => {
+    if (!diffResult) return;
+
+    await applyToDisk({
+      htmlFilePath: diffResult.htmlFilePath,
+      updatedHtmlContent: diffResult.updatedHtmlContent,
+      scssFilePath: diffResult.scssFilePath,
+      updatedScssContent: diffResult.updatedScssContent
+    });
   };
 
   // Save settings with dual persistence (localStorage + disk)
@@ -1228,6 +1343,10 @@ export const App: React.FC = () => {
           onGenerateWithLLM={handleGenerateWithLLM}
           onCopyPrompt={handleCopyPrompt}
           isGenerating={isGenerating}
+          directApplyMode={directApplyMode}
+          onToggleDirectApply={() => setDirectApplyMode((v) => !v)}
+          canUndoApply={lastApply !== null}
+          onUndoApply={handleUndoApply}
         />
       </div>
 
@@ -1246,6 +1365,10 @@ export const App: React.FC = () => {
         onCopyPrompt={handleCopyPrompt}
         isGenerating={isGenerating}
         llmProvider={config.llmProvider}
+        directApplyMode={directApplyMode}
+        onToggleDirectApply={() => setDirectApplyMode((v) => !v)}
+        canUndoApply={lastApply !== null}
+        onUndoApply={handleUndoApply}
       />
 
       {/* Monaco Diff Modal */}
